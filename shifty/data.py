@@ -1,3 +1,22 @@
+
+
+# -------------------------------------------------------------------------------------
+# Third party imports
+# -------------------------------------------------------------------------------------
+import os, sys
+import astropy
+from astropy.io import fits
+
+# -------------------------------------------------------------------------------------
+# Any local imports
+# -------------------------------------------------------------------------------------
+# N/A
+
+
+# -------------------------------------------------------------------------------------
+# Various class definitions for *Data Handling* in shifty
+# -------------------------------------------------------------------------------------
+
 class ImageDataSet():
     '''
         set of images w/ times & wcs which are suitable for stacking (e.g. stars have been masked, bad cadences removed, …)
@@ -41,7 +60,7 @@ class ImageDataSet():
 class ImageLoader():
     '''
         Parent class for ...
-         - TessImageLoader, HubbleImageLoader, PanstarrsImageLoader,
+         - TessImageLoader, HubbleImageLoader, PanstarrsImageLoader, ...
         
         => input: sector number, camera, chip, detector_range, bad_data_thresholds
         _load_images()
@@ -61,23 +80,22 @@ class ImageLoader():
         '''
             Returns the default path to the directory where data will be downloaded.
         
-        By default, this method will return ~/.shifty/data
-        and create this directory if it does not exist.  
+            By default, this method will return ~/.shifty/data
+            and create this directory if it does not exist.
         
-        If the directory cannot be accessed or created, then it returns the local directory (".")
-        
-        Returns
-        -------
-        download_dir : str
-        Path to location of `ffi_dir` where FFIs will be downloaded
+            If the directory cannot be accessed or created, then it returns the local directory (".")
+            
+            Returns
+            -------
+            data_dir : str
+                Path to location of `data_dir` where data (FITs files) will be downloaded
         '''
 
-        data_dir = os.path.join(os.path.expanduser('~'), '.eleanor',
-                                        'sector_{}'.format(self.sector), 'ffis')
-        if os.path.isdir(data_dir):
-            return data_dir
-        else:
-            # if it doesn't exist, make a new cache directory
+        data_dir = os.path.join(os.path.expanduser('~'), 'shifty_data')
+        
+        # If it doesn't exist, make a new data directory
+        if not os.path.isdir(data_dir):
+            
             try:
                 os.makedirs(data_dir)
             
@@ -87,12 +105,28 @@ class ImageLoader():
                               'Download directory set to be the current working directory instead.'.format(data_dir))
                 data_dir = '.'
                                                 
-            return data_dir
+        return data_dir
+
+    # -------------------------------------------------------------------------------------
+    # The methods below are for the loading of *general* fits-format data files
+    # -------------------------------------------------------------------------------------
+
+    def _load_images():
+        '''
+            Overall image loader as envisaged by Geert & Matt over coffee
+        '''
+        
+    def _load_image(self , fits_file):
+        '''
+            Load a single image
+            Basically a wrapper around astropy.fits.open
+            But with the potential for added functionality (to be added later)
+        '''
+        return fits.open(os.path.join(self.local_dir, fits_file))
 
 
 
-
-class TESSImageLoader():
+class TESSImageLoader(ImageLoader):
     '''
         
         => input: sector number, camera, chip, detector_range, bad_data_thresholds
@@ -106,13 +140,63 @@ class TESSImageLoader():
     
     '''
         
-    def __init__(self, ) :
+    def __init__(self, local_dir = None) :
+        
+        # - Allow ourselves to use ImageLoader methods
+        super().__init__()
+    
+        # - Local directory for saving data
+        self.local_dir = self._fetch_data_directory() if local_dir == None else local_dir
+
+    # -------------------------------------------------------------------------------------
+    # The methods below are for the "CLEANING" of TESS data
+    # -------------------------------------------------------------------------------------
+    def _mask_stars(self,):
+        ''' 
+            We want to remove stars in some way
+            Barentsen & Payne discussed a simple mask: i.e. set pixels that contain stars to NaN
+            This would be done based on GAIA positions
+            
+            This is *NOT* subtraction (see _subtract_stars )
+            
+        '''
+        pass
+    
+    def _subtract_stars(self,):
+        '''
+            We want to remove stars in some way
+            Holman & Payne have generally assumed some form of subtraction
+
+            This is *NOT* masking (see _mask_stars )
+            
+        '''
+        pass
+
+    def _remove_bad_cadences(self,):
+        '''
+            In many cases it may be most straightforward to simply eliminate entire exposures
+            E.g. If they have terribly high stray-light across the entire exposure
+        '''
+        pass
+
+    def _remove_scattered_light_problem_areas(self,):
+        ''' 
+            TESS has certain regions (of the chip(s)) in certain exposures that are known to have ...
+            ... high levels of polluting scattered light
+            We may want to completely mask these out
+        '''
+        pass
+
+    def _remove_strap_regions(self,):
+        '''
+            TESS has certain regions (of the chip(s)) in which the backing-straps provide confusingly high signals
+            We may want to completely mask these out (or perhaps flag them in some alternative manner)
+        '''
         pass
 
 
-
     # -------------------------------------------------------------------------------------
-    # The methods below are for the loading of a very limited, predefined set of TESS data
+    # The methods below are for the loading of a limited, pre-defined set of TESS data
     # Intended for the facilitation of testing
     # -------------------------------------------------------------------------------------
 
@@ -121,28 +205,31 @@ class TESSImageLoader():
             Load limited set of fits files for testing from local disk
         '''
         # If the test data doesn't exist on local disk, go and download the data from MAST
-        self._ensure_test_data_available_locally():
+        self._ensure_test_data_available_locally()
     
-        # Now that we are gauranteed that the data exists, we can open it
+        # Now that we are guaranteed that the data exists, we can open it
+        # *** MJP: I Expect that the subsequent command/call will be updated (at some time in the future) to use a more general load function
         pass
     
 
     def _ensure_test_data_available_locally(self,):
         '''
             Check whether local versions of the fits files are available on local disk
-            If it does npt exist, download it from MAST
+            If they do not exist, download from MAST
         '''
         for fits_file in self._define_test_data():
-            if not os.path.isfile( os.path.join(local_dir, fits_file) ):
-                self._download_test_data()
+            if not os.path.isfile( os.path.join(self.local_dir, fits_file) ):
+                self._download_test_data(fits_file)
+        print("\n\t All test data available locally ")
 
-    def _download_test_data(self, local_dir , fits_file ):
+    def _download_test_data(self , fits_file ):
         '''
             Download fits file from MAST to local disk
+            Note that file is saved to specific directory, "local_dir"
         '''
-        command = "curl -C - -L -o %s https://mast.stsci.edu/api/v0.1/Download/file/?uri=mast:TESS/product/%s" % ( os.path.join(local_dir, fits_file) , fits_file)
+        command = "curl -C - -L -o %s https://mast.stsci.edu/api/v0.1/Download/file/?uri=mast:TESS/product/%s" % ( os.path.join(self.local_dir, fits_file) , fits_file)
         os.system(command)
-        assert os.path.isfile( os.path.join(local_dir, fits_file) )
+        assert os.path.isfile( os.path.join(self.local_dir, fits_file) )
 
 
     def _define_test_data(self,):
