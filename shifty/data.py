@@ -157,7 +157,9 @@ class TESSImageLoader(ImageLoader):
             Barentsen & Payne discussed a simple mask: i.e. set pixels that contain stars to NaN
             This would be done based on GAIA positions
             
-            This is *NOT* subtraction (see _subtract_stars )
+            This is *NOT* subtraction (see _subtract_stars below )
+            
+            Presumably only one of _mask_stars / _subtract_stars is required, but I am 100% certain that Holman will at least want to experiment with subtraction
             
         '''
         pass
@@ -169,6 +171,8 @@ class TESSImageLoader(ImageLoader):
 
             This is *NOT* masking (see _mask_stars )
             
+            Presumably only one of _mask_stars / _subtract_stars is required, but I am 100% certain that Holman will at least want to experiment with subtraction
+
         '''
         pass
 
