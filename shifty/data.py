@@ -73,9 +73,22 @@ class ImageLoader():
 
     '''
     
-    def __init__(self, ) :
-        pass
+    def __init__(self, local_dir = None ) :
+        
+        # - Local directory for saving data
+        self.local_dir = self._fetch_data_directory() if local_dir == None else local_dir
 
+    # -------------------------------------------------------------------------------------
+    # Public Methods
+    # -------------------------------------------------------------------------------------
+    def get_image_data_set():
+        '''
+            Overall image loader as envisaged by Geert & Matt over coffee
+        '''
+
+    # -------------------------------------------------------------------------------------
+    # Data directories / Storage / etc
+    # -------------------------------------------------------------------------------------
     def _fetch_data_directory(self):
         '''
             Returns the default path to the directory where data will be downloaded.
@@ -91,7 +104,7 @@ class ImageLoader():
                 Path to location of `data_dir` where data (FITs files) will be downloaded
         '''
 
-        data_dir = os.path.join(os.path.expanduser('~'), 'shifty_data')
+        data_dir = os.path.join(os.path.expanduser('~'), '.shifty_data')
         
         # If it doesn't exist, make a new data directory
         if not os.path.isdir(data_dir):
@@ -143,10 +156,8 @@ class TESSImageLoader(ImageLoader):
     def __init__(self, local_dir = None) :
         
         # - Allow ourselves to use ImageLoader methods
-        super().__init__()
+        ImageLoader.__init__(self, local_dir=local_dir )
     
-        # - Local directory for saving data
-        self.local_dir = self._fetch_data_directory() if local_dir == None else local_dir
 
     # -------------------------------------------------------------------------------------
     # The methods below are for the "CLEANING" of TESS data
@@ -200,6 +211,58 @@ class TESSImageLoader(ImageLoader):
 
 
     # -------------------------------------------------------------------------------------
+    # The methods below relate to the aquisition of TESS data
+    # -------------------------------------------------------------------------------------
+
+    def _download_download_script(self , sectorNumber ):
+        '''
+            There are scripts available online to facilitate bulk downloads
+            E.g.
+            https://archive.stsci.edu/missions/tess/download_scripts/sector/tesscurl_sector_4_ffic.sh
+            
+            This function will get the script that is relevant for a specific TESS sector
+        '''
+        filename    = 'tesscurl_sector_%s_ffic.sh' % sectorNumber
+        outFilepath = os.path.join(self.local_dir , filename)
+        command = "curl -C - -L -o %s https://archive.stsci.edu/missions/tess/download_scripts/sector/%s" % ( outFilepath , filename)
+        os.system(command)
+        return outFilepath
+        
+    def _parse_download_script(self , shFile ):
+        '''
+            Parse a script downloaded using '_download_download_script'
+            
+            Contents look like 16,000 rows of ...
+            curl -C - -L -o tess2018292175940-s0004-1-2-0124-s_ffic.fits https://mast.stsci.edu/api/v0.1/Download/file/?uri=mast:TESS/product/tess2018292175940-s0004-1-2-0124-s_ffic.fits
+            
+            Will output a list of fits files 
+            E.g. [ 'tess2018292095940-s0004-1-1-0124-s_ffic.fits' , '']
+            
+            Will also parse the fits files to understand their sector, camera, chip, ...
+            E.g. [(4,1,1,)]
+        '''
+        # read contents
+        with open(shFile, 'r') as fh:
+            data = fh.readlines()
+        print(data[2].split()[5])
+        # fits files are in the fifth secn if we split on white-space
+        fits_files = [_.split()[5] for _ in data if len(_.split()) > 5 and _[0]!='#']
+        
+        # can then split on "-" to extract sector number, camera & chip
+        sectorNumbers   = [ int(_.split("-")[1][-4:]) for _ in fits_files]
+        cameraNumbers   = [ int(_.split("-")[2])      for _ in fits_files]
+        chipNumbers     = [ int(_.split("-")[3])      for _ in fits_files]
+
+        return {
+            'fits_files':fits_files,
+            'sectorNumbers':sectorNumbers,
+            'cameraNumbers':cameraNumbers,
+            'chipNumbers':chipNumbers }
+        
+        
+
+
+    # -------------------------------------------------------------------------------------
     # The methods below are for the loading of a limited, pre-defined set of TESS data
     # Intended for the facilitation of testing
     # -------------------------------------------------------------------------------------
@@ -207,13 +270,15 @@ class TESSImageLoader(ImageLoader):
     def _load_test_data(self,):
         '''
             Load limited set of fits files for testing from local disk
+            
+            As per the overall expectation of ImageLoader/TESSImageLoader/get_image_data_set, this needs to return an "ImageDataSet"
         '''
         # If the test data doesn't exist on local disk, go and download the data from MAST
         self._ensure_test_data_available_locally()
     
         # Now that we are guaranteed that the data exists, we can open it
         # *** MJP: I Expect that the subsequent command/call will be updated (at some time in the future) to use a more general load function
-        pass
+        self._load_image()
     
 
     def _ensure_test_data_available_locally(self,):
