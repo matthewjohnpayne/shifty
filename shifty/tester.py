@@ -57,7 +57,7 @@ def test_TESSImageLoader():
     T = data.TESSImageLoader()
     assert isinstance(T , data.TESSImageLoader), 'T did not get created as expected'
     
-    # Check has expected attributes
+    # Check T object has expected attributes
     assert 'local_dir' in T.__dict__, ' local_dir not defined in T'
 
     # Test method to derive tess_subdirectory_structure
@@ -84,7 +84,8 @@ def test_TESSImageLoader():
     outFilepath = T._download_download_script(sectorNumber)
     assert  os.path.isfile(expectedScriptAddress), '%r did not get downloaded' % expectedScriptAddress
 
-    # Test method to parse the download file
+
+    # Test method to parse the downloaded script
     dataDict = T._parse_download_script(outFilepath)
     assert isinstance(dataDict, dict), 'not a dict '
     for key in ['fits_files','sectorNumbers','cameraNumbers','chipNumbers', 'filepaths' , 'curlCommands']:
@@ -115,6 +116,6 @@ def test_TESSImageLoader():
 
 
 # Won't need these calls if use pytest/similar
-test_ImageLoader()
+#test_ImageLoader()
 test_TESSImageLoader()
 

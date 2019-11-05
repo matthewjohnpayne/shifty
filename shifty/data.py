@@ -310,21 +310,30 @@ class TESSImageLoader(ImageLoader):
         # fits files are in the fifth secn if we split on white-space
         returnDict = {  'fits_files':[_.split()[5] for _ in data],
                         'sectorNumbers':[], 'cameraNumbers':[], 'chipNumbers':[], 'filepaths':[], 'curlCommands':[] }
+        
         # can then use _fetch_tess_fits_filepath() to get the sector number, camera, chip & destination-filepath
         for ff, originalCurl in zip(returnDict['fits_files'], data):
             result = self._fetch_tess_fits_filepath(ff)
         
             # just getting data out of the returned dictionary
-            returnDict['sectorNumbers'].append(result['sectorNumbers'])
+            returnDict['sectorNumbers'].append(result['sectorNumber'])
             returnDict['cameraNumbers'].append(result['cameraNumber'])
             returnDict['chipNumbers'].append(result['chipNumber'])
             returnDict['filepaths'].append(result['filepath'])
         
-            # edit the curl command to redirect output
-            returnDict['curlCommands'].append(' '.join( *originalCurl.split[:5], result['filepath'], *originalCurl.split()[6:] ) )
+            # edit the curl command to redirect output to the sub-directory that we want  ...
+            try:
+                returnDict['curlCommands'].append(' '.join( *originalCurl.split()[:5], result['filepath'], *originalCurl.split()[6:] ) )
+            except:
+                print(originalCurl)
+                print(originalCurl.split())
+                print(originalCurl.split()[:5])
+                print(result['filepath'])
+                print(originalCurl.split()[6:])
+                sys.exit()
 
         return returnDict
-        
+    
         
 
 
