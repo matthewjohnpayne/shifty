@@ -19,8 +19,15 @@ from astropy.io import fits
 
 class ImageDataSet():
     '''
-        set of images w/ times & wcs which are suitable for stacking (e.g. stars have been masked, bad cadences removed, …)
+        A set of images w/ times & wcs which are suitable for stacking (e.g. stars have been masked, bad cadences removed, …)
+        
+        => inputs:
+        (i) images:
         list of `ImageHDU` objects
+        (ii) obs_code:
+        code (string) to uniquely specify observatory, and hence allow determination of observatory position as a func of time
+        
+        => methods:
         observatory_position (JPL code)
         get_observatory_barycentric_positions()
         get_theta_wcs()  expose the transformation of pixel to theta space
@@ -34,7 +41,6 @@ class ImageDataSet():
 
 
     def generate_observatory_barycentric_positions(self):
-        
         '''list_of_barycentric_positions_one_for_each_image'''
         
         return [calculate_barycentric_position(image.header['obs_date'] , self.obs_code) for image in self.images]
@@ -53,7 +59,7 @@ class ImageDataSet():
             We need to think about whether/how the tangent plane is pixelized
 
         '''
-
+        pass
 
 
 
@@ -62,13 +68,18 @@ class ImageLoader():
         Parent class for ...
          - TessImageLoader, HubbleImageLoader, PanstarrsImageLoader, ...
         
-        => input: sector number, camera, chip, detector_range, bad_data_thresholds
+        * inputs:
+        sector number, camera, chip, detector_range, bad_data_thresholds
+        
+        * methods
         _load_images()
         _remove_stars()  (i.e. set pixels that contain stars to NaN)
         _remove_bad_cadences()
         _remove_scattered_light_problem_areas()
         _remove_strap_regions()
-        get_image_data_set() => ImageDataSet
+        
+        * main public method:
+        get_image_data_set() => Returns an ImageDataSet
         
 
     '''
@@ -85,6 +96,7 @@ class ImageLoader():
         '''
             Overall image loader as envisaged by Geert & Matt over coffee
         '''
+        pass
 
     # -------------------------------------------------------------------------------------
     # Data directories / Storage / etc
@@ -110,7 +122,7 @@ class ImageLoader():
         if not os.path.isdir(data_dir):
             
             try:
-                os.makedirs(data_dir)
+                os.mkdir(data_dir)
             
             # downloads locally if OS error occurs
             except OSError:
@@ -119,23 +131,26 @@ class ImageLoader():
                 data_dir = '.'
                                                 
         return data_dir
+    
 
     # -------------------------------------------------------------------------------------
     # The methods below are for the loading of *general* fits-format data files
     # -------------------------------------------------------------------------------------
 
-    def _load_images():
+    def _load_images(self, fits_file_paths):
         '''
-            Overall image loader as envisaged by Geert & Matt over coffee
+            ...
         '''
-        
-    def _load_image(self , fits_file):
+        return
+    
+    def _load_image(self , fits_file_path):
         '''
             Load a single image
             Basically a wrapper around astropy.fits.open
             But with the potential for added functionality (to be added later)
         '''
-        return fits.open(os.path.join(self.local_dir, fits_file))
+        assert os.path.isfile(fits_file_path), '%r is not a filepath' % fits_file_path
+        return fits.open(fits_file_path)
 
 
 
@@ -213,18 +228,65 @@ class TESSImageLoader(ImageLoader):
     # -------------------------------------------------------------------------------------
     # The methods below relate to the aquisition of TESS data
     # -------------------------------------------------------------------------------------
+    def _ensure_tess_subdirectory_structure_exists(self, sectorNumber, cameraNumber, chipNumber):
+        '''
+            Ensure subdirectory structure exists
+            Subdirectories organized as self.local_dir/sector/camera/chip
+            '''
+        try:
+            assert os.path.isdir(self.local_dir)
+            
+            subDir = os.path.join(self.local_dir, sectorNumber )
+            if not os.path.isdir(subDir): os.mkdir(subDir)
+            
+            subDir = os.path.join(subDir, cameraNumber )
+            if not os.path.isdir(subDir): os.mkdir(subDir)
+            
+            subDir = os.path.join(subDir, chipNumber )
+            if not os.path.isdir(subDir): os.mkdir(subDir)
+            
+            assert os.path.isdir(subDir)
+            return True
+        except OSError:
+            sys.exit('Problem with sub-directory creation in ..._ensure_tess_subdirectory_structure_exists()...')
+    
+
+    def _fetch_tess_fits_filepath(self, fit_filename):
+        '''
+            Parses the name of a tess fits-file and decides on a filepath
+             - fits filename looks like tess2018292175940-s0004-1-2-0124-s_ffic.fits
+            Filepath is just subdirectories within self.local_dir
+            Subdirectories organized as self.local_dir/sector/camera/chip
+        '''
+        # can split on "-" to extract sector number, camera & chip
+        sectorNumber   = int(fit_filename.split("-")[1][-4:])
+        cameraNumber   = int(fit_filename.split("-")[2])
+        chipNumber     = int(fit_filename.split("-")[3])
+    
+        # derive filepath
+        tessDir     = os.path.join(self.local_dir, str(sectorNumber), str(cameraNumber), str(chipNumber) )
+        filepath    = os.path.join(tessDir, fit_filename)
+        
+        # ensure directory-structure exists
+        self._ensure_tess_subdirectory_structure_exists(str(sectorNumber), str(cameraNumber), str(chipNumber))
+        
+        return {
+            'sectorNumber'  : sectorNumber,
+            'cameraNumber'  : cameraNumber,
+            'chipNumber'    : chipNumber,
+            'filepath'      : filepath
+        }
 
     def _download_download_script(self , sectorNumber ):
         '''
             There are scripts available online to facilitate bulk downloads
-            E.g.
-            https://archive.stsci.edu/missions/tess/download_scripts/sector/tesscurl_sector_4_ffic.sh
+            E.g. https://archive.stsci.edu/missions/tess/download_scripts/sector/tesscurl_sector_4_ffic.sh
             
             This function will get the script that is relevant for a specific TESS sector
         '''
         filename    = 'tesscurl_sector_%s_ffic.sh' % sectorNumber
         outFilepath = os.path.join(self.local_dir , filename)
-        command = "curl -C - -L -o %s https://archive.stsci.edu/missions/tess/download_scripts/sector/%s" % ( outFilepath , filename)
+        command     = "curl -C - -L -o %s https://archive.stsci.edu/missions/tess/download_scripts/sector/%s" % ( outFilepath , filename)
         os.system(command)
         return outFilepath
         
@@ -243,21 +305,25 @@ class TESSImageLoader(ImageLoader):
         '''
         # read contents
         with open(shFile, 'r') as fh:
-            data = fh.readlines()
-        print(data[2].split()[5])
-        # fits files are in the fifth secn if we split on white-space
-        fits_files = [_.split()[5] for _ in data if len(_.split()) > 5 and _[0]!='#']
+            data = [_ for _ in fh.readlines() if len(_.split()) > 5 and _[0]!='#']
         
-        # can then split on "-" to extract sector number, camera & chip
-        sectorNumbers   = [ int(_.split("-")[1][-4:]) for _ in fits_files]
-        cameraNumbers   = [ int(_.split("-")[2])      for _ in fits_files]
-        chipNumbers     = [ int(_.split("-")[3])      for _ in fits_files]
+        # fits files are in the fifth secn if we split on white-space
+        returnDict = {  'fits_files':[_.split()[5] for _ in data],
+                        'sectorNumbers':[], 'cameraNumbers':[], 'chipNumbers':[], 'filepaths':[], 'curlCommands':[] }
+        # can then use _fetch_tess_fits_filepath() to get the sector number, camera, chip & destination-filepath
+        for ff, originalCurl in zip(returnDict['fits_files'], data):
+            result = self._fetch_tess_fits_filepath(ff)
+        
+            # just getting data out of the returned dictionary
+            returnDict['sectorNumbers'].append(result['sectorNumbers'])
+            returnDict['cameraNumbers'].append(result['cameraNumber'])
+            returnDict['chipNumbers'].append(result['chipNumber'])
+            returnDict['filepaths'].append(result['filepath'])
+        
+            # edit the curl command to redirect output
+            returnDict['curlCommands'].append(' '.join( *originalCurl.split[:5], result['filepath'], *originalCurl.split()[6:] ) )
 
-        return {
-            'fits_files':fits_files,
-            'sectorNumbers':sectorNumbers,
-            'cameraNumbers':cameraNumbers,
-            'chipNumbers':chipNumbers }
+        return returnDict
         
         
 
@@ -278,7 +344,7 @@ class TESSImageLoader(ImageLoader):
     
         # Now that we are guaranteed that the data exists, we can open it
         # *** MJP: I Expect that the subsequent command/call will be updated (at some time in the future) to use a more general load function
-        self._load_image()
+        self._load_images()
     
 
     def _ensure_test_data_available_locally(self,):

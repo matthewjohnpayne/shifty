@@ -37,9 +37,9 @@ def test_ImageLoader():
     
     # Check method to load single image
     # - for now just checking that it returns an opened fits-file (formated as an hdulist)
-    # - later we may want to perform more checks
-    fits_file = os.path.join(IL.local_dir, 'tess2018292095940-s0004-1-1-0124-s_ffic.fits')
-    hdulist = IL._load_image(fits_file)
+    # - later we will want to perform more checks
+    fits_filepath = os.path.join(IL.local_dir, str(4), str(1), str(1) , 'tess2018292095940-s0004-1-1-0124-s_ffic.fits')
+    hdulist = IL._load_image(fits_filepath)
     assert isinstance(hdulist, astropy.io.fits.hdu.hdulist.HDUList), 'did not return expected object type'
     for key in ['PRIMARY']:
         assert key in hdulist, '%r not in hdulist' % key
@@ -60,6 +60,21 @@ def test_TESSImageLoader():
     # Check has expected attributes
     assert 'local_dir' in T.__dict__, ' local_dir not defined in T'
 
+    # Test method to derive tess_subdirectory_structure
+    expectedDirectory = os.path.join(T.local_dir, str(4), str(4), str(4) )
+    assert T._ensure_tess_subdirectory_structure_exists(str(4), str(4), str(4))
+    assert os.path.isdir(expectedDirectory)
+    
+    # Test method to derive a directory filepath from a fits-filename
+    fits_filename = 'tess2018292095940-s0004-1-1-0124-s_ffic.fits'
+    result = T._fetch_tess_fits_filepath(fits_filename)
+    assert isinstance(result, dict)
+    for key in ['sectorNumber','cameraNumber','chipNumber', 'filepath' ]:
+        assert key in result, '%r not in result ' %  key
+    expectedFilepath = os.path.join(T.local_dir, str(4), str(1), str(1) , fits_filename)
+    assert result['filepath'] == expectedFilepath, 'filepath, %r, does not equal expectedFilepath, %r' % (result['filepath'], expectedFilepath)
+    
+    
     # Test methods to get download script(s)
     sectorNumber = 4
     expectedScriptAddress = os.path.join( T.local_dir , 'tesscurl_sector_%s_ffic.sh' % sectorNumber )
@@ -72,14 +87,15 @@ def test_TESSImageLoader():
     # Test method to parse the download file
     dataDict = T._parse_download_script(outFilepath)
     assert isinstance(dataDict, dict), 'not a dict '
-    for key in ['fits_files','sectorNumbers','cameraNumbers','chipNumbers']:
+    for key in ['fits_files','sectorNumbers','cameraNumbers','chipNumbers', 'filepaths' , 'curlCommands']:
         assert key in dataDict, '%r not in dataDict ' %  key
 
         if key == 'sectorNumbers':
             assert np.all( [ _ == sectorNumber for _ in dataDict[key] ] ), 'sectorNumbers are wrong'
         if key == 'cameraNumbers' or key == 'chipNumbers':
             assert np.all( [ _ in [1,2,3,4] for _ in dataDict[key] ] ), 'cameraNumbers/chipNumbers are wrong'
-    
+        if key in 'curlCommands':
+            print(dataDict[key][:2])
 
     print('test_TESSImageLoader')
 
