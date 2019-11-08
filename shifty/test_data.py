@@ -36,15 +36,15 @@ def test_ImageDataSet():
     # - test that it has 'images' & 'obs_code' as attributes
     IDS = data.ImageDataSet(HDUs, 'C57' )
     assert isinstance(IDS , data.ImageDataSet), 'IDS did not get created as expected'
-    assert np.all( [ _ in IDS.__dict__ for _ in ['images','obs_code'] ] )
+    assert np.all( [ _ in IDS.__dict__ for _ in ['headers', 'images','unc', 'obs_code'] ] )
 
-    # Test whether the IDS object has
-    print( [ type(_) for _ in IDS.images] )
-    #print(IDS.images)
-
+    # Test whether IDS.images is the right type & shape
+    assert isinstance( IDS.images, np.ndarray ) and np.shape(IDS.images)[0] == len(HDUs)
 
     print(' \t *** Need to add tests of POSITION and THETA methods ')
     print(' \t Passed tests currently implemented in *test_ImageDataSet()* ')
+
+
 
 def test_ImageLoader():
     ''' Test the ImageLoader parent class '''
@@ -69,9 +69,7 @@ def test_ImageLoader():
     for key in ['PRIMARY']:
         assert key in hdulist, '%r not in hdulist' % key
 
-
-
-    print('test_ImageLoader')
+    print('\t completed tests of test_ImageLoader')
 
 
 
@@ -161,11 +159,25 @@ def test_TESSImageLoader():
     result = T.get_image_data_set( file_spec_container='DEV' )
     assert isinstance(result, data.ImageDataSet ), \
         '*get_image_data_set()* did not return an ImageDataSet'
-    assert np.all( [ _ in result.__dict__ for _ in ['images', 'obs_code'] ] ),\
+    assert np.all( [ _ in result.__dict__ for _ in ['headers', 'images','unc', 'obs_code'] ] ),\
         'ImageDataSet object did not have the expected attributes'
 
 
-    print('\t test_TESSImageLoader passed ')
+    # repeat the test of *get_image_data_set()* method on the test-data set
+    # - but now pass a cleaning_dict with params all set False
+    # - should have the same outcome as above
+    cpd = { _ : False for _ in ['mask' ,'subtract', 'bad_cad', 'scat', 'strap' ] }
+    result = T.get_image_data_set( file_spec_container='DEV' , cleaning_parameter_dict=cpd )
+    assert isinstance(result, data.ImageDataSet ), \
+        '*get_image_data_set()* did not return an ImageDataSet'
+    assert np.all( [ _ in result.__dict__ for _ in ['headers', 'images','unc', 'obs_code'] ] ),\
+        'ImageDataSet object did not have the expected attributes'
+    
+
+
+
+
+    print('\t completed tests of test_TESSImageLoader ')
 
 
 
@@ -183,6 +195,6 @@ def test_TESSImageLoader():
 
 # Won't need these calls if use pytest/similar
 test_ImageDataSet()
-#test_ImageLoader()
+test_ImageLoader()
 test_TESSImageLoader()
 

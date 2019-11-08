@@ -8,6 +8,7 @@ import astropy
 from astropy.io import fits
 from collections import OrderedDict
 import numpy as np
+from astropy.time import Time
 
 # -------------------------------------------------------------------------------------
 # Any local imports
@@ -42,16 +43,36 @@ class ImageDataSet():
     def __init__(self, HDUs , obs_code) :
 
         # Each HDU as read from fits file will have several components
+        # [[Do we want to split them out at this point ?]]
         # - In the TESS files there are 3xHeaders (Primary, Calibrated-Data, Uncertainty)
+        self.headers = {
+            'primary'   : [_[0].header for _ in HDUs],
+            'cal'       : [_[1].header for _ in HDUs],
+            'unc'       : [_[2].header for _ in HDUs],
+        }
         # - In the TESS files there are 2xData (Calibrated-Data, Uncertainty)
-        # Do we want to split them out at this point ?
-        self.images     = images
+        self.images     = np.array([_[1].data for _ in HDUs])
+        self.unc        = np.array([_[2].data for _ in HDUs])
+        
+        # We're going to need the times, so just get it done ...
+        self.mid_times = self._parse_time_with_checks()
         self.obs_code   = obs_code
 
+    # -------------------------------------------------------------------------------------
+    # Public Methods
+    # -------------------------------------------------------------------------------------
 
     def generate_observatory_barycentric_positions(self):
-        '''list_of_barycentric_positions_one_for_each_image'''
-        return [calculate_barycentric_position(image.header['obs_date'] , self.obs_code) for image in self.images]
+        ''' 
+            generate barycentric-positions, one for each image
+            
+            we should use "wis.py"
+             - I wrote it at/around TESS Ninja 2: it would be good to use it
+             - N.B. wis.py currently only for space-based: would need mpc_lib functionality for ground-based
+        '''
+        
+        # wis.py currently defaults to using heliocenter, so need to use barycenter
+        return wis.Satellite(self.obscode, self.mid_times, center='BARY').posns
 
     def generate_theta_coordinates(self):
         ''' 
@@ -67,9 +88,71 @@ class ImageDataSet():
             We need to think about whether/how the tangent plane is pixelized
 
         '''
+        # much of the following can be copied from HeliocentricClusteringUtilitiesSingleDetections.py
+        # get RA,Dec for each pixel (using wcs)
+        # convert RA,Dec to equatorial unit vector
+        # decide whether there is any value in rotating to ecliptic coordinates
+        # - at least make functionality available
+        # rotate to projection place
         pass
 
+    # -------------------------------------------------------------------------------------
+    # Internal Methods
+    # -------------------------------------------------------------------------------------
+    
+    def _parse_time_with_checks(self,):
+    '''
+        Get a BJD/TDB out of the headers for each exposure
+        May also be useful to have exposure duration ...
+        
+        Returns:
+        --------
+        astropy.time.core.Time object
+        '''
+            # (1) check that it is always TDB in the 'cal' header [TIMESYS]
+            # (2) LIVETIME gets effective exposure time
+            # (3) BARYCORR might provide a useful sanity check
+            # (4) it looks like I need to calculate a time-mid
+            for _ in self.headers['cal']:
+            assert 'TDB' in _['TIMESYS'], 'wrong TIMESYS ... '      # / time system is Barycentric Dynamical Time (TDB)
+            t_arr.append(       _['BJDREFI']    \                   # / integer part of BTJD reference date
+                         +      _['BJDREFF']    \                   # / fraction of the day in BTJD reference date
+                         + 0.5*(_['TSTART']      \                  # / observation start time in BTJD
+                                +      _['TSTOP'])    )                    # / observation stop time in BTJD
+                             #t_exp.append( _['LIVETIME'] )                           # / [d] effective exposure time
+                             
+                             return Time(t_arr, format='jd', scale='tdb') #, np.array(t_exp)
 
+    def _RADEC_to_unit(self, RA_, DEC_):
+        '''
+            This translates (RA,DEC)  into ...
+            ...a unit vector (still in Equatorial coords)
+            
+            Inputs:
+            -------
+            RA_, DEC_ : iterables of floats
+             - assumed in degrees & assumed in Equatorial coords
+             
+            Returns:
+            --------
+            UV_ : numpy array of shape == (3,len(RA_))
+             - unit vector in Equatorial coords
+            
+        '''
+        x_ = np.cos(DEC_*np.pi/180.) * np.cos(RA_*np.pi/180.)
+        y_ = np.cos(DEC_*np.pi/180.) * np.sin(RA_*np.pi/180.)
+        z_ = np.sin(DEC_*np.pi/180.)
+        return np.array([x_,y_,z_]).T
+
+    def equatorial_to_ecliptic(self, v, rot_mat=???):#MPC_library.rotate_matrix(-MPC_library.Constants.ecl)):
+        ''' Convert from equatorial coordinates to ECLIPTIC coordinates '''
+        # Look at this: https://github.com/astropy/astropy/blob/master/astropy/coordinates/tests/accuracy/test_ecliptic.py
+        # ra = np.ones((4, ), dtype=float) * u.deg
+        # dec = 2*np.ones((4, ), dtype=float) * u.deg
+        # distance = np.ones((4, ), dtype=float) * u.au
+        # test_icrs = ICRS(ra=ra, dec=dec, distance=distance)
+        # bary_arr = test_icrs.transform_to(BarycentricMeanEcliptic)
+    return np.matmul(v, rot_mat.T)
 
 class ImageLoader():
     '''
@@ -272,7 +355,7 @@ class TESSImageLoader(ImageLoader):
         # clean the data
         # - [[could just ovewrite original HDUs with clean version: will leave both for now]]
         cleanHDUs = self._clean_data(HDUs, cleaning_parameter_dict )
-        
+
         # create & return ImageDataSet
         return ImageDataSet(cleanHDUs, self.obs_code)
 
@@ -283,7 +366,7 @@ class TESSImageLoader(ImageLoader):
         ''' 
             Wrapper around the various "cleaning" methods below
             - Simply provided as a means to enable simple toggling on/off of functions 
-            - Uses **kwargs to control what is/isn't evaluated
+            - Uses cleaning_parameters to control what is/isn't evaluated
         '''
         # dict to hold key:function mappings
         # - Have used ORDERED because at some point it might be important what order the funcs are used
@@ -302,6 +385,7 @@ class TESSImageLoader(ImageLoader):
             if key in cleaning_parameters and cleaning_parameters[key]:
                 HDUs = func_to_run(HDUs, cleaning_parameters)
 
+        return HDUs
 
         
 
