@@ -7,10 +7,10 @@ class OrbitHypothesis():
         self.shift_x = shift_x
         self.shift_y = shift_y
 
-        self.alpha_dot = alpha_dot
-        self.beta_dot = beta_dot
-        self.gamma  = gamma
-        self.gamma_dot = gamma_dot
+        self.alpha_dot  = alpha_dot
+        self.beta_dot   = beta_dot
+        self.gamma      = gamma
+        self.gamma_dot  = gamma_dot
 
 
 
@@ -18,7 +18,13 @@ class OrbitHypothesis():
 
 class OrbitHypothesisGenerator(  ):
     '''
-        => Input: (d_min=100, d_max=300) or (alpha, beta, gammas), ImageDataSet
+        Inputs:
+        -------
+        (d_min=100, d_max=300) or (alpha, beta, gammas), 
+        ImageDataSet
+        
+        Methods:
+        --------
         get_alpha_beta_gamma()
         get_hypotheses() => list of `OrbitHypothesis`
 
@@ -35,6 +41,7 @@ class OrbitHypothesisGenerator(  ):
     def _get_default_alphadot_betadot_ranges(self, gamma):
         '''
             Set the default search range as a func of gamma
+            [[This will be from the max bound velocity ]]
         '''
         alpha_dot_min, alpha_dot_max, beta_dot_min, beta_dot_max  = 0,1,0,1
         return alpha_dot_min, alpha_dot_max, beta_dot_min, beta_dot_max

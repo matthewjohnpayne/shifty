@@ -7,6 +7,7 @@ import os, sys
 import astropy
 from astropy.io import fits
 from collections import OrderedDict
+import numpy as np
 
 # -------------------------------------------------------------------------------------
 # Any local imports
@@ -22,21 +23,28 @@ class ImageDataSet():
     '''
         A set of images w/ times & wcs which are suitable for stacking (e.g. stars have been masked, bad cadences removed, …)
         
-        => inputs:
+        Inputs:
+        -------
         (i) images:
-        list of `ImageHDU` objects
+        list of `astropy.io.fits.hdu.hdulist.HDUList` objects
+        
         (ii) obs_code:
         code (string) to uniquely specify observatory, and hence allow determination of observatory position as a func of time
         
-        => methods:
+        Methods:
+        --------
         observatory_position (JPL code)
         get_observatory_barycentric_positions()
         get_theta_wcs()  expose the transformation of pixel to theta space
 
     '''
 
-    def __init__(self, images , obs_code) :
+    def __init__(self, HDUs , obs_code) :
 
+        # Each HDU as read from fits file will have several components
+        # - In the TESS files there are 3xHeaders (Primary, Calibrated-Data, Uncertainty)
+        # - In the TESS files there are 2xData (Calibrated-Data, Uncertainty)
+        # Do we want to split them out at this point ?
         self.images     = images
         self.obs_code   = obs_code
 
@@ -84,10 +92,10 @@ class ImageLoader():
 
     '''
     
-    def __init__(self, local_dir = None ) :
+    def __init__(self, ) :
         
         # - Local directory for saving data
-        self.local_dir = self._fetch_data_directory() if local_dir == None else local_dir
+        self.local_dir = self._fetch_data_directory()
 
     # -------------------------------------------------------------------------------------
     # Public Methods
@@ -224,10 +232,10 @@ class TESSImageLoader(ImageLoader):
     
     '''
         
-    def __init__(self, local_dir = None) :
+    def __init__(self, ) :
         
         # - Allow ourselves to use ImageLoader methods
-        ImageLoader.__init__(self, local_dir=local_dir )
+        ImageLoader.__init__(self, )
     
         # - Define some important TESS-related quantities
         self.file_spec_keywords = ['sector', 'camera', 'chip']
@@ -237,7 +245,7 @@ class TESSImageLoader(ImageLoader):
     # -------------------------------------------------------------------------------------
     # Public Methods
     # -------------------------------------------------------------------------------------
-    def get_image_data_set(self, file_spec_container={}, cleaning_spec_dict={} ):
+    def get_image_data_set(self, file_spec_container={}, cleaning_parameter_dict ={} ):
         '''
             Overall image loader as envisaged by Geert & Matt over coffee
             - Gets data from file(s)
@@ -263,7 +271,7 @@ class TESSImageLoader(ImageLoader):
         
         # clean the data
         # - [[could just ovewrite original HDUs with clean version: will leave both for now]]
-        cleanHDUs = self._clean_data( HDUs, cleaning_spec_dict )
+        cleanHDUs = self._clean_data(HDUs, cleaning_parameter_dict )
         
         # create & return ImageDataSet
         return ImageDataSet(cleanHDUs, self.obs_code)
@@ -271,7 +279,7 @@ class TESSImageLoader(ImageLoader):
     # -------------------------------------------------------------------------------------
     # The methods below are for the "CLEANING" of TESS data
     # -------------------------------------------------------------------------------------
-    def _clean_data(self, HDUs, **kwargs):
+    def _clean_data(self, HDUs, cleaning_parameters):
         ''' 
             Wrapper around the various "cleaning" methods below
             - Simply provided as a means to enable simple toggling on/off of functions 
@@ -279,20 +287,20 @@ class TESSImageLoader(ImageLoader):
         '''
         # dict to hold key:function mappings
         # - Have used ORDERED because at some point it might be important what order the funcs are used
-        cleaning_function_dict = OrderedDict(
-                                'mask'      : self._mask_stars(),
-                                'subtract'  : self._subtract_stars(),
-                                'bad_cad'   : self._remove_bad_cadences(),
-                                'scat'      : self._remove_scattered_light_problem_areas(),
-                                'strap'     : self._remove_strap_regions(),
-                                )
+        cleaning_function_dict = OrderedDict([
+                                              ('mask'      , self._mask_stars ),
+                                              ('subtract'  , self._subtract_stars ),
+                                              ('bad_cad'   , self._remove_bad_cadences ),
+                                              ('scat'      , self._remove_scattered_light_problem_areas ),
+                                              ('strap'     , self._remove_strap_regions ),
+                                             ])
                                 
         # loop over possible funcs (in order of dict)
         # [[ NOTICE THE IMPLICIT DESIGN CHOICE THAT ALL CLEANING FUNCTIONS MUST RETURN HDUs]]
         for key, func_to_run in cleaning_function_dict.items():
-            # run a function if it is included as True in kwargs (e.g. {'mask':True})
-            if key in kwargs and kwargs[key]:
-                HDUs = func_to_run(HDUs, **kwargs)
+            # run a function if it is included as True in cleaning_parameters (e.g. {'mask':True})
+            if key in cleaning_parameters and cleaning_parameters[key]:
+                HDUs = func_to_run(HDUs, cleaning_parameters)
 
 
         
@@ -506,10 +514,10 @@ class TESSImageLoader(ImageLoader):
         # - Will match either STRING or DICTIONARY-ENTRIES
         # - N.B. self.testing_keywords ~ ['DEV', 'TEST']
         if  isinstance (file_spec_container, str)  \
-            and np.any( [ _ for _ in self.testing_keywords if _ in upper(file_spec_container) ] ) \
+            and np.any( [ True for _ in self.testing_keywords if _ in file_spec_container.upper() ] ) \
             or  \
             isinstance (file_spec_container, dict) \
-            and np.any( [ _ for _ in self.testing_keywords if _ in file_spec_container and file_spec_container[_]] ):
+            and np.any( [ True for _ in self.testing_keywords if _ in file_spec_container and file_spec_container[_]] ):
 
             # Use the test-data method to ensure files available locally
             fits_file_paths = self._ensure_test_data_available_locally()
@@ -524,7 +532,7 @@ class TESSImageLoader(ImageLoader):
         # [[ *** AS WRITTEN THIS WILL ONLY RETURN THE DATA FOR A SINGLE CHIP *** ]]
         #
         elif    isinstance (file_spec_container, dict) \
-            and np.all( [ _ in file_spec_container for _ in self.file_spec_keywords] ):
+            and np.all( [ True in file_spec_container for _ in self.file_spec_keywords] ):
                 directory_path = os.path.join( self.local_dir, *[ '%s' % str(file_spec_container[_]) for _ in self.file_spec_keywords] )
                 to_parent      = glob.glob( os.path.join(directory_path , '*.fits'))
 
@@ -533,7 +541,7 @@ class TESSImageLoader(ImageLoader):
             to_parent      = file_spec_container
                 
         # Hand off to PARENT to do the rest of the loading
-        return super(ImageLoader, self)._load_images( to_parent )
+        return super(TESSImageLoader, self)._load_images( to_parent )
 
 
     # -------------------------------------------------------------------------------------

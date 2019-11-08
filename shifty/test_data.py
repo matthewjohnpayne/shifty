@@ -22,8 +22,33 @@ import data
 # Test "data" module
 # -------------------------------------------------------------------------------------
 
+
+
+
+def test_ImageDataSet():
+    ''' Test the ImageDataSet object and associated methods '''
+    print('\nWorking on test_ImageDataSet() ...')
+    # Need to create HDUs to populate the ImageDataSet
+    T = data.TESSImageLoader()
+    HDUs = T._load_images('DEV')
+
+    # Test creation of IDS object
+    # - test that it has 'images' & 'obs_code' as attributes
+    IDS = data.ImageDataSet(HDUs, 'C57' )
+    assert isinstance(IDS , data.ImageDataSet), 'IDS did not get created as expected'
+    assert np.all( [ _ in IDS.__dict__ for _ in ['images','obs_code'] ] )
+
+    # Test whether the IDS object has
+    print( [ type(_) for _ in IDS.images] )
+    #print(IDS.images)
+
+
+    print(' \t *** Need to add tests of POSITION and THETA methods ')
+    print(' \t Passed tests currently implemented in *test_ImageDataSet()* ')
+
 def test_ImageLoader():
     ''' Test the ImageLoader parent class '''
+    print('\nWorking on test_ImageLoader() ...')
     
     # Test creation of IL object
     IL = data.ImageLoader()
@@ -52,6 +77,7 @@ def test_ImageLoader():
 
 def test_TESSImageLoader():
     ''' Test the TESSImageLoader child class '''
+    print('\nWorking on test_TESSImageLoader() ...')
 
     # Test creation of T object
     T = data.TESSImageLoader()
@@ -135,9 +161,8 @@ def test_TESSImageLoader():
     result = T.get_image_data_set( file_spec_container='DEV' )
     assert isinstance(result, data.ImageDataSet ), \
         '*get_image_data_set()* did not return an ImageDataSet'
-    assert np.all( [ _ in result.__dict__ for _ in ['images', 'obs_code'] ] ),
+    assert np.all( [ _ in result.__dict__ for _ in ['images', 'obs_code'] ] ),\
         'ImageDataSet object did not have the expected attributes'
-
 
 
     print('\t test_TESSImageLoader passed ')
@@ -157,6 +182,7 @@ def test_TESSImageLoader():
 
 
 # Won't need these calls if use pytest/similar
+test_ImageDataSet()
 #test_ImageLoader()
 test_TESSImageLoader()
 
