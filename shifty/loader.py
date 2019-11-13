@@ -16,7 +16,9 @@ from astropy.time import Time
 # Any local imports
 # -------------------------------------------------------------------------------------
 from downloader import *
+import data
 from data import ImageDataSet
+from refcat import RefCat
 
 # -------------------------------------------------------------------------------------
 # Various class definitions for *data import * in shifty
@@ -190,16 +192,17 @@ class TESSImageLoader(ImageLoader, TESSDownloader):
             '''
         # Load the data from files
         HDUs = self._load_images( **kwargs )
-        
+            
+        # parse the HDUs to get requisite data to create ImageDataSet object
+        # [[may be more useful to move this up before the cleaning stage]]
+        HDU_wcs_headers, HDU_data, HDU_unc, HDU_midtimes = self._parse_HDUs_for_ImageDataSet( HDUs )
+
         # clean the data
         # - [[could just ovewrite original HDUs with clean version: will leave both for now]]
-        cleanHDUs = self._clean_data(HDUs, **kwargs )
-        
-        # parse the HDUs to get requisite data to create ImageDataSet object
-        HDU_wcs_headers, HDU_data, HDU_unc, HDU_midtimes = self._parse_HDUs_for_ImageDataSet(cleanHDUs)
-        
+        clean_HDU_data = self._clean_data(HDU_wcs_headers, HDU_data, **kwargs )
+
         # create & return ImageDataSet
-        return ImageDataSet(HDU_wcs_headers, HDU_data, HDU_midtimes, self.obs_code, HDU_unc = HDU_unc)
+        return ImageDataSet(HDU_wcs_headers, clean_HDU_data, HDU_midtimes, self.obs_code, HDU_unc = HDU_unc)
     
     
     # -------------------------------------------------------------------------------------
@@ -262,7 +265,7 @@ class TESSImageLoader(ImageLoader, TESSDownloader):
     # -------------------------------------------------------------------------------------
     # The methods below are for the "CLEANING" of TESS data
     # -------------------------------------------------------------------------------------
-    def _clean_data(self, HDUs, **kwargs):
+    def _clean_data(self, HDU_wcs_headers, HDU_data, **kwargs):
         '''
             Wrapper around the various "cleaning" methods below
             - Simply provided as a means to enable simple toggling on/off of functions
@@ -279,17 +282,17 @@ class TESSImageLoader(ImageLoader, TESSDownloader):
                                               ])
             
         # loop over possible funcs (in order of dict)
-        # [[ NOTICE THE IMPLICIT DESIGN CHOICE THAT ALL CLEANING FUNCTIONS MUST RETURN HDUs]]
+        # [[ NOTICE THE IMPLICIT DESIGN CHOICE THAT ALL CLEANING FUNCTIONS MUST RETURN HDU_data]]
         for key, func_to_run in cleaning_function_dict.items():
             # run a function if it is included as True in cleaning_parameters (e.g. {'mask':True})
             if key in kwargs and kwargs[key]:
-                HDUs = func_to_run(HDUs, **kwargs)
+                HDU_data = func_to_run(HDU_wcs_headers , HDU_data, **kwargs)
     
-        return HDUs
+        return HDU_data
 
 
 
-    def _mask_stars(self,HDUs, **kwargs):
+    def _mask_stars(self, HDU_wcs_headers, HDU_data, **kwargs):
         '''
             We want to remove stars in some way
             Barentsen & Payne discussed a simple mask: i.e. set pixels that contain stars to NaN
@@ -300,7 +303,29 @@ class TESSImageLoader(ImageLoader, TESSDownloader):
             Presumably only one of _mask_stars / _subtract_stars is required, but I am 100% certain that Holman will at least want to experiment with subtraction
             
         '''
-        return HDUs
+        
+        # provide a means to only do the refcat search once
+        # - using this assumes that all of the images are closely aligned (v. similar ra,dec ranges)
+        ONESHOT = True if 'oneshot' in kwargs and kwargs['oneshot'] else False
+        
+        if ONESHOT:
+            # find the location of all of the stars on the FIRST image ONLY
+            ra, dec , pix = RefCat().find_all_stars_on_image(HDU_wcs_headers[0], HDU_data[0])
+        
+        for header, image_data in zip(HDU_wcs_headers, HDU_data):
+            
+            if not ONESHOT:
+                # find the location of all of the stars on each individual image
+                ra, dec , pix = RefCat().find_all_stars_on_image(header, image_data)
+     
+            # presumably need to do something about deciding how big a mask to use
+            # - based on the source magnitude?
+            print(' ** WARNING: just masking a single pixel at present ** ')
+            
+            # mask all of the stars
+            image_data[pix] = 0
+            
+        return HDU_data
 
     def _subtract_stars(self,HDUs, **kwargs):
         '''

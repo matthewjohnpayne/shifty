@@ -1,8 +1,10 @@
 '''
    this test code borrowed from 'eleanor.py'
    https://github.com/afeinstein20/eleanor/blob/master/eleanor/tests/test_mast.py
+   [[UNSURE WHETHER IT WILL BE USED IN shifty.py BUT WANT TO HAVE IT JUST-IN-IN CASE ...]]
 '''
-#from ..mast import *
+
+from mast import *
 #from eleanor.mast import (crossmatch_distance, tic_by_contamination, crossmatch_by_position)
 
 import astropy.units as u
@@ -14,7 +16,6 @@ pos2 = [20, 49]
 def test_crossmatch():
     # is distance between cooordinates calculated correctly?
     assert_almost_equal(crossmatch_distance(pos1, pos2).value, 4292.5, decimal=1)
-    # assert(len(crossmatch_by_position(pos1, .01, 'Mast.GaiaDR2.Crossmatch')) == 2)
 
 def test_cone_search():
     # there should be 13 targets in within .01 degrees of pos1

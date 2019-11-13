@@ -149,6 +149,11 @@ def test_TESSImageLoader():
 
 
 
+    # test methods for masking data
+    # -----------------------------------------
+    result = T.get_image_data_set( **{'development' : True , 'mask':True }  )
+
+
 
     print('\t completed tests of test_TESSImageLoader ')
 

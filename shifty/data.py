@@ -12,10 +12,12 @@ import numpy as np
 import functools
 
 import astropy
+from astropy.time import Time
+from astropy import units as u
 from astropy.io import fits
+from astropy.wcs import WCS
 from astropy.coordinates import SkyCoord
 from astropy.coordinates.matrix_utilities import rotation_matrix
-from astropy.time import Time
 from astropy.coordinates.builtin_frames import FK5, ICRS, GCRS, GeocentricMeanEcliptic, BarycentricMeanEcliptic, HeliocentricMeanEcliptic, GeocentricTrueEcliptic, BarycentricTrueEcliptic, HeliocentricTrueEcliptic, HeliocentricEclipticIAU76
 from astropy.coordinates.representation import CartesianRepresentation,SphericalRepresentation, UnitSphericalRepresentation
 
@@ -29,6 +31,7 @@ from astropy.coordinates.representation import CartesianRepresentation,Spherical
 # -------------------------------------------------------------------------------------
 # Various class definitions for *Data Handling* in shifty
 # -------------------------------------------------------------------------------------
+
 
 class ImageDataSet():
     '''
@@ -92,7 +95,7 @@ class ImageDataSet():
         # wis.py currently defaults to using heliocenter, so need to use barycenter
         return wis.Satellite(self.obscode, self.mid_times, center='BARY').posns
 
-    def generate_theta_coordinates(self , reference_vector ):
+    def generate_theta_coordinates(self , reference_sky_coord , header, data ):
         ''' 
             Each pixel in an image corresponds to some RA,Dec coord (can get from wcs)
              - N.B. an (RA,Dec) can be represented as a unit-vector, u=(u_x, u_y, u_z)
@@ -104,31 +107,38 @@ class ImageDataSet():
             For each image this will return a 2D array of "theta-coordinates", one for each pixel in the image
             
             We need to think about whether/how the tangent plane is pixelized
+            
+            inputs:
+            -------
+            reference_sky_coord
+            - astropy.coordinates.sky_coordinate.SkyCoord object
+            - used to define a vector, in a coord frame, that will define a rotation-transformation
+
+            header
+             - 
+             
+            data
+             -
 
         '''
         # do something to ensure that the reference-vector is in a consistent format &/or frame
-        ref_vec_ecliptic_cart_rep = self._ensure_consistent_reference_vector( reference_vector )
+        reference_sky_coord = self._ensure_consistent_reference_vector( reference_sky_coord )
         
-        theta_ = []
-        for h,d in zip(self.headers, self.data) :
-        
-            # get RA,Dec for each pixel (using wcs)
-            sky_coord = self._get_per_pixel_RADEC(h,d)
-        
-            # convert ra,dec to unit-vector in ECLIPTIC coordinates
-            ecliptic_uv_CartRep = self._skycoord_to_ecUV( sky_coord )
-        
-            # rotate ecliptic unit vector to projection plane
-            theta.append( self._rot_vec_to_projection_coords(ecliptic_uv_CartRep ,
-                                                               ref_vec_ecliptic_cart_rep ) )
-        
-            return theta # np.array(theta)
+        # get RA,Dec for each pixel (using wcs)
+        sky_coord = get_per_pixel_RADEC(header, data)
+    
+        # convert ra,dec to unit-vector in ECLIPTIC coordinates
+        ecliptic_uv_CartRep = self._skycoord_to_ecUV( sky_coord )
+    
+        # rotate ecliptic unit vector to projection plane (theta) coords
+        return self._rot_vec_to_projection_coords(ecliptic_uv_CartRep ,
+                                                  reference_sky_coord )
 
     # -------------------------------------------------------------------------------------
     # Internal Methods
     # -------------------------------------------------------------------------------------
     
-    def _ensure_consistent_reference_vector( *args, **kwargs ):
+    def _ensure_consistent_reference_vector(self,  *args, **kwargs ):
         '''
             Previous work has often been held-up by confusion over reference frame 
             Going to ensure that whatever is passed is made into ECLIPTIC coordinates
@@ -149,42 +159,10 @@ class ImageDataSet():
         ref_vec = None
         for arg in args:
             if isinstance(arg, astropy.coordinates.sky_coordinate.SkyCoord):
-                ref_vec = arg
+                return arg
     
-        # convert the SkyCoord object to barycentric ecliptic unit vector
-        if ref_vec != None:
-            return self._skycoord_to_ecUV(ref_vec)
-
+ 
     
-    def _get_per_pixel_RADEC(self, header, data ):
-        '''
-            use wcs to get RADEC of each pixel
-            https://docs.astropy.org/en/stable/api/astropy.wcs.WCS.html#astropy.wcs.WCS.all_pix2world
-            
-            NOTE: axis ordering difference between numpy array and FITS
-            
-            inputs:
-            -------
-            header
-            - header portion of fits, must contain wcs solution
-            data
-            - data portion of fits: np.ndarray
-            
-            returns:
-            --------
-            astropy.coordinates.sky_coordinate.SkyCoord object
-            '''
-        # not sure whether ultimately necessary, but for now enforce 2D-array
-        assert len(data.shape)==2, 'data is not 2D:: data.shape=%r' % data.shape
-        
-        # set up a meshgrid of pixel addresses for the image-data pixels
-        xx, yy = np.meshgrid(range(np.shape(data)[1]), range(np.shape(data)[0]) )
-        
-        # calculate the RA,DEC values for each pixel using astropy-wcs
-        ra,dec = np.array(WCS(header).all_pix2world(xx, yy, 1))
-        
-        # return an astropy SkyCoord object
-        return SkyCoord(ra=ra, dec=dec, frame='icrs')
 
 
     def _skycoord_to_ecUV(self, sky_coord ):
@@ -263,6 +241,8 @@ class ImageDataSet():
             [[ rotation = rotation_matrix(45 * u.deg, axis='z') ]]
             
         '''
+        
+        x_ref, y_ref, z_ref = float(x_ref), float(y_ref), float(z_ref)
         r = np.sqrt(x_ref*x_ref + y_ref*y_ref + z_ref*z_ref)
         lon0 = np.arctan2(y_ref, x_ref)
         lat0 = np.arcsin(z_ref/r)
@@ -277,7 +257,7 @@ class ImageDataSet():
         return rot_mat
     
     
-    def _rot_vec_to_projection_coords(self, vec_rep, reference_vec):
+    def _rot_vec_to_projection_coords(self, vec_rep, reference_sky_coord ):
         '''
             rotate to projection plane
             https://docs.astropy.org/en/stable/api/astropy.coordinates.CartesianRepresentation.html
@@ -291,9 +271,10 @@ class ImageDataSet():
             vec_rep
             - astropy.coordinates.representation.CartesianRepresentation
             - vectors that are to be transformed
-            reference_vec
-            - astropy.coordinates.representation.CartesianRepresentation
-            - a vector that will define a rotation-transformation
+            
+            reference_sky_coord
+            - astropy.coordinates.sky_coordinate.SkyCoord object
+            - used to define a vector, in a coord frame, that will define a rotation-transformation
             
             returns:
             --------
@@ -302,9 +283,14 @@ class ImageDataSet():
             
             
         '''
-        try:
-            return vec_rep.transform( self._calculate_rotation_matrix( *reference_vec.get_xyz() ) )
-        except Exception as error:
+
+        if 1:
+            # convert sky-coord to cart-rep in barycentric ecliptic coords
+            bary_ec_cart = reference_sky_coord.barycentricmeanecliptic.represent_as(UnitSphericalRepresentation).represent_as(CartesianRepresentation).xyz.T[0]
+            # transform (rotate) using matrix from _calculate_rotation_matrix
+            return vec_rep.transform( self._calculate_rotation_matrix( *bary_ec_cart ) )
+        
+        else:#except Exception as error:
             print('error in _rot_vec_to_projection_coords')
             print('may be due to passing in arrays rather than (e.g.) CartesianRepresentation')
             sys.exit('%r'%error)

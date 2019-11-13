@@ -1,7 +1,6 @@
 """
-tests for shifty
+    tests for shifty
 
-to date, very few tests exist ...
 """
 
 
@@ -13,9 +12,10 @@ import numpy as np
 
 import astropy
 from astropy.time import Time
+from astropy import units as u
+from astropy.wcs import WCS
 from astropy.coordinates import SkyCoord
 from astropy.coordinates.builtin_frames import FK5, ICRS, GCRS, GeocentricMeanEcliptic, BarycentricMeanEcliptic, HeliocentricMeanEcliptic, GeocentricTrueEcliptic, BarycentricTrueEcliptic, HeliocentricTrueEcliptic, HeliocentricEclipticIAU76
-from astropy import units as u
 from astropy.coordinates.representation import CartesianRepresentation,SphericalRepresentation, UnitSphericalRepresentation
 
 
@@ -29,6 +29,9 @@ import loader
 # Test "data" module
 # -------------------------------------------------------------------------------------
 
+# ------------------------------------------------------------------------
+# convenience methods for tests
+# ------------------------------------------------------------------------
 
 def _RADEC_to_unit( RA_, DEC_):
     '''
@@ -88,6 +91,11 @@ def rotate_matrix(ecl):
                        [0.0, -se,  ce]])
     return rotmat
 
+
+# ------------------------------------------------------------------------
+# tests
+# ------------------------------------------------------------------------
+
 def test_ImageDataSet():
     ''' Test the ImageDataSet object and associated methods '''
     print('\nWorking on test_ImageDataSet() ...')
@@ -120,10 +128,10 @@ def test_ImageDataSet():
     # -----------------------------------------
 
     # use wcs to get RADEC of each pixel
-    sky_coord = IDS._get_per_pixel_RADEC(HDU_wcs_headers[0], HDU_data[0])
+    sky_coord = data.get_per_pixel_RADEC(HDU_wcs_headers[0], HDU_data[0])
 
     #
-    assert False
+    print('\n\t get_per_pixel_RADEC *NOT* currently tested')
 
 
 
@@ -170,6 +178,8 @@ def test_ImageDataSet():
 
 
 
+
+
     # test *_skycoord_to_ecUV* --------------
 
     # set up a SkyCoord object to hold the ra, dec
@@ -196,42 +206,61 @@ def test_ImageDataSet():
 
 
 
-
-
-
-
-
-    # test other convenience methods
+    # test *_ensure_consistent_reference_vector()* method
     # -----------------------------------------
 
     # test the method that ensures a supplied reference-vector is of allowed type
-    IDS._ensure_consistent_reference_vector()
-    
+
     # sky-coord objects are allowed, so test ...
     ra  = np.array([90.])* u.deg
     dec = np.array([0.])* u.deg
     SC = SkyCoord(ra=ra, dec=dec, frame='icrs')
+
+    IDS._ensure_consistent_reference_vector( SC )
     
 
 
 
 
-
-    # test image-to-tangent plane method(s)
+    # test rotation method(s)
     # -----------------------------------------
+    input_vectors = np.array( [[1,0,0],[0,1,0],[0,0,1]] )
 
     # test *_calculate_rotation_matrix()* ---------------
+    result = IDS._calculate_rotation_matrix( *input_vectors[2] )
+    expectedResult = np.array([
+                               [0,1,0],
+                               [-1,0,0],
+                               [0,0,1],
+                              ])
+    assert np.allclose( result, expectedResult , rtol=1e-09, atol=1e-09 ) , \
+        '_calculate_rotation_matrix did not match expected values '
+
 
     # test *_rot_vec_to_projection_coords* --------------
+    ecliptic_uv_CartRep = IDS._skycoord_to_ecUV( SC )
+    result = IDS._rot_vec_to_projection_coords( ecliptic_uv_CartRep, SC)
+    # have to do a transpose & [0] because it is outputing lists of x, y, z components
+    result = np.asarray(result.xyz.T[0])
+    expectedResult = np.array([0.,0.,1.])
+    # Here we are asking to transforma vector that is in the same direction as the reference-vector
+    # - So expect the xy-coords == 0 and the z-coord == 1
+    assert np.allclose( result , expectedResult  ) , \
+        '_rot_vec_to_projection_coords did not match expected values '
 
 
 
-    # test image-to-tangent plane method(s)
+
+
+    # test overall *generate_theta_coordinates()* method
     # -----------------------------------------
+    IDS.generate_theta_coordinates( SC , HDU_wcs_headers[0], HDU_data[0] )
+
+    print('\n\t generate_theta_coordinates *NOT* currently tested')
 
 
 
-    print(' \t *** Need to add tests of POSITION and THETA methods ')
+
     print(' \t Passed tests currently implemented in *test_ImageDataSet()* ')
 
 
@@ -244,3 +273,9 @@ def test_ImageDataSet():
 test_ImageDataSet()
 
 
+###
+### differential velocity aberation
+### register the images
+### just use wcs for reference image
+### sigma-clipped average for subtraction template
+### tonry ref_cat

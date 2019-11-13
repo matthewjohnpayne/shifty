@@ -1,17 +1,23 @@
 '''
    this code borrowed from eleanor.py
    https://github.com/afeinstein20/eleanor/blob/master/eleanor/mast.py
+   [[UNSURE WHETHER IT WILL BE USED IN shifty.py BUT WANT TO HAVE IT JUST-IN-IN CASE ...]]
 '''
+
+# -------------------------------------------------------------------------------------
+# Third party imports
+# -------------------------------------------------------------------------------------
+
 import os, sys, re, json, time
 import requests
 import numpy as np
+
 import astropy.units as u
 from astropy.coordinates import SkyCoord
 from astroquery.vizier import Vizier
 from astroquery.mast import Catalogs
 from astropy.table import Table, Column, Row
 from astropy.wcs import WCS
-
 
 try: # Python 3.x
     from urllib.parse import quote as urlencode
@@ -22,8 +28,21 @@ except ImportError: # Python 2.x
     from urllib import urlretrieve
     import httplib
 
+
+# -------------------------------------------------------------------------------------
+# Any local imports
+# -------------------------------------------------------------------------------------
+
+
 __all__ = ['coords_from_tic', 'gaia_from_coords', 'coords_from_gaia', 'tic_from_coords',
            'cone_search']
+
+
+# -------------------------------------------------------------------------------------
+# Functions for querying mast
+#  - this code borrowed from eleanor.py
+#  - https://github.com/afeinstein20/eleanor/blob/master/eleanor/mast.py
+# -------------------------------------------------------------------------------------
 
 def mastQuery(request):
     """Sends a request to the MAST server.
@@ -42,7 +61,8 @@ def mastQuery(request):
 
     # Grab Python Version
     version = '.'.join(map(str, sys.version_info[:3]))
-        # Create Http Header Variables
+    
+    # Create Http Header Variables
     headers = {'Content-type': 'application/x-www-form-urlencoded',
                'Accept': 'text/plain',
                'User-agent': 'python-requests/'+version}
