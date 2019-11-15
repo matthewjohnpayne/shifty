@@ -102,7 +102,7 @@ def test_TESSImageLoader():
 
 
     # test the convenience function *_load_test_images()*
-    # this should be identical to using _load_images('DEV')
+    # this should be identical to using _load_images(  development = True )
     result = T._load_test_images()
     assert isinstance(result, list) and len(result) == len(T._define_test_data()), \
         'returned result from T._load_test_data() not as expected'
@@ -149,9 +149,23 @@ def test_TESSImageLoader():
 
 
 
+    # test methods for loading pixel-response-function data
+    # -----------------------------------------
+    print('prfs ...', T.download_prf() )
+    result = T.get_prfs()
+    assert isinstance(result, list), \
+        'not a list: %r' % type(result)
+    for item in result:
+        assert isinstance(item, astropy.io.fits.hdu.hdulist.HDUList), \
+            'not an HDU object: %r' % type(item)
+
+
+
+
+
     # test methods for masking data
     # -----------------------------------------
-    result = T.get_image_data_set( **{'development' : True , 'mask':True }  )
+    #result = T.get_image_data_set( **{'development' : True , 'mask':True }  )
 
 
 

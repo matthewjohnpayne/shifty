@@ -7,11 +7,13 @@
 # -------------------------------------------------------------------------------------
 import os, sys
 import astropy
-from astropy.io import fits
 from collections import OrderedDict
 import numpy as np
-from astropy.time import Time
 import functools
+import glob
+
+from astropy.io import fits
+from astropy.time import Time
 
 # -------------------------------------------------------------------------------------
 # Any local imports
@@ -140,8 +142,50 @@ class TESSDownloader(Downloader):
                     print('will attempt to continue downloading other files ... ')
                     print()
                         
-                        
-                        
+    def download_prf(self, ):
+        '''
+            download pixel response function models
+             - from  https://archive.stsci.edu/missions/tess/models/prf_fitsfiles/
+             
+            for documentation & description:
+             - see https://outerspace.stsci.edu/display/TESS/2.0+-+Data+Product+Overview#id-2.0-DataProductOverview-PixelResponseFunctions
+        '''
+        # At the end we want to pass back a list of prf filepaths
+        prf_filepaths = []
+        
+        for sectorString in ['start_s0001','start_s0004']:
+            
+            # ensure local directory exists ...
+            sector_directory = os.path.join( self._fetch_tess_prf_directory(), sectorString)
+            if not os.path.isdir(sector_directory):
+                os.mkdir(sector_directory)
+            
+            # get tar-files for sector
+            for camera in range(1,5):
+                
+                # local filepath
+                local_tar_filepath =  os.path.join( sector_directory, 'tess_prf_camera_%s.tgz' % str(camera) )
+                
+                # curl download command
+                command = "curl -C - -L -o %s https://archive.stsci.edu/missions/tess/models/prf_fitsfiles/%s/tess_prf_camera_%s.tgz" % \
+                    (local_tar_filepath, sectorString, str(camera))
+            
+                # only execute curl-download if required
+                if not os.path.isfile(local_tar_filepath):
+                    os.system(command)
+
+                    # untar the file
+                    currentDir = os.getcwd()
+                    os.chdir(sector_directory)
+                    command = 'tar xvf %s' %    local_tar_filepath
+                    os.system(command)
+                    os.chdir(currentDir)
+    
+            # get the names of all the downloaded fits files
+            prf_filepaths.extend( glob.glob( sector_directory + '/*/*.fits') )
+
+        # pass back a list of all of the downloaded prf files
+        return prf_filepaths
     
     # -------------------------------------------------------------------------------------
     # Data directories / Storage / etc
@@ -165,6 +209,26 @@ class TESSDownloader(Downloader):
                 print('setting tess download directory to be same as parent directory: %r ' % self.local_dir )
                 tess_filepath = self.local_dir
         return tess_filepath
+    
+    def _fetch_tess_prf_directory(self):
+        '''
+            Create a sub-directory within self._fetch_tess_data_directory()
+            Falls back to using self._fetch_tess_data_directory()
+            '''
+        
+        # Define a subdirectory within the main tess-directory
+        prf_filepath = os.path.join(self._fetch_tess_data_directory(), 'prf')
+        
+        # Attempt to create the desired sub-directory
+        # Fall back to main data-directory if any error
+        if not os.path.isdir(prf_filepath):
+            try:
+                os.mkdir(prf_filepath)
+            except (Exception, OSError) as error :
+                print(error)
+                print('setting tess-prf download directory to be same as parent directory: %r ' % self._fetch_tess_data_directory() )
+                prf_filepath = self._fetch_data_directory()
+        return prf_filepath
 
     
     def _ensure_tess_subdirectory_structure_exists(self, sectorNumber, cameraNumber, chipNumber):
@@ -250,7 +314,14 @@ class TESSDownloader(Downloader):
                 sys.exit('Problem obtaining download script: %r' % filename )
         return filepath
     
-
+    def _prf_filenames(self, cameraNumber, chipNumber):
+        '''
+            ...
+        '''
+        for sectorString in ['start_s0001','start_s0004']:
+            for i in range(4):
+                'https://archive.stsci.edu/missions/tess/models/prf_fitsfiles/%s/tess_prf_camera_%s.tgz' % (sectorString, str(camera))
+    
     # -------------------------------------------------------------------------------------
     # curl commands for download
     # -------------------------------------------------------------------------------------

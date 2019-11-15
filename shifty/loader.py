@@ -205,6 +205,18 @@ class TESSImageLoader(ImageLoader, TESSDownloader):
         return ImageDataSet(HDU_wcs_headers, clean_HDU_data, HDU_midtimes, self.obs_code, HDU_unc = HDU_unc)
     
     
+    def get_prfs(self, ):
+        '''
+            ...
+        '''
+        # Defined in downloader ...
+        # - slight hack: down_prf returns list of downloaded filepaths
+        #  (but does no download work if the prfs already exist)
+        prf_filepaths = self.download_prf()
+    
+        # Use standard method to open filepaths and return list of HDUs
+        return self._load_images(fits_filepaths = prf_filepaths)
+    
     # -------------------------------------------------------------------------------------
     # The methods below are for the "PARSING" of TESS HDUS from FITS
     # -------------------------------------------------------------------------------------
@@ -320,7 +332,10 @@ class TESSImageLoader(ImageLoader, TESSDownloader):
      
             # presumably need to do something about deciding how big a mask to use
             # - based on the source magnitude?
-            print(' ** WARNING: just masking a single pixel at present ** ')
+            # Perhaps something from photutils
+            # https://photutils.readthedocs.io/en/stable/psf.html
+            # http://docs.astropy.org/en/stable/api/astropy.convolution.discretize_model.html
+            print(' ** WARNING: just outputing a single central mask pixel at present ** ')
             
             # mask all of the stars
             image_data[pix] = 0
@@ -344,6 +359,21 @@ class TESSImageLoader(ImageLoader, TESSDownloader):
             --------
             list HDUs
         '''
+        # Naive
+        # - Just do subtraction of first image as template, with little/no registering (that's what Oelkers ended up doing in TESS RNAAS)
+        
+        # There is the DIA tool by Oelkers
+        # https://iopscience.iop.org/article/10.3847/1538-3881/aad68e/meta
+        # https://iopscience.iop.org/article/10.3847/1538-3881/aad68e/pdf
+        # https://github.com/ryanoelkers/DIA
+        
+        
+        
+        # There is the HOTPANTS tool by Becker
+        # http://web.ipac.caltech.edu/staff/fmasci/home/astro_refs/HOTPANTSsw2011.pdf
+        # https://github.com/acbecker/hotpants
+        
+        
         return HDUs
 
     def _remove_bad_cadences(self,HDUs, **kwargs):

@@ -9,6 +9,8 @@
 import os, sys
 import astropy
 import numpy as np
+import glob
+
 from astropy.time import Time
 
 # -------------------------------------------------------------------------------------
@@ -175,6 +177,29 @@ def test_TESSDownloader():
     downloaded_files=glob.glob( os.path.join(expectedDirectory , '*.fits'))
     assert len(downloaded_files) > 1000, \
         'Insufficient files [%d] in %r ' % (len(downloaded_files), expectedDirectory )
+
+
+
+    # test methods for getting prf data
+    # -----------------------------------------
+    prf_filepaths = T.download_prf()
+    assert len(prf_filepaths) >= 2*16*25, \
+        'insufficient filepaths'
+
+    # we expect the files to have been extracted into ...
+    # "~/.shifty_data/prf/start_000<X>/cam<Y>_ccd<Z>" where X=1or4, Y=1-to-4, & Z=1-to-4
+    assert os.path.isdir( T._fetch_tess_prf_directory() )
+    for sectorString in ['start_s0001', 'start_s0004']:
+        for i in range(1,5):
+            for j in range(1,5  ):
+                filepath = os.path.join( T._fetch_tess_prf_directory() ,
+                                        sectorString,
+                                        'cam%d_ccd%d' % (i,j)  )
+                # check directory exists
+                assert os.path.isdir( filepath )
+                # check directory contains 25 files
+                assert len(glob.glob(filepath + '/*fits') ) >= 25
+
 
 def test_HSTDownloader():
     ''' Test the HSTDownloader class '''

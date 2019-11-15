@@ -131,7 +131,7 @@ class RefCat(Downloader):
         assert os.getcwd() == orig_workingdir
     
     
-    def find_all_stars_on_image(self,  header, image_data ):
+    def find_all_stars_on_image(self,  header, image_data , nPixels = 3 ):
         '''
             given image-data (and associated header) use refcat to find all of the stars that fall on the image
             
@@ -142,40 +142,38 @@ class RefCat(Downloader):
             --------
             pixels / (ra,dec) / both ???
         '''
-        print('find_all_stars_on_image')
 
         # Identify integer RAs & Decs in the data: uses WCS:
-        # - N.B. I am assuming int/floor is ok because later search will use rad >= 1 deg to search
+        # Then find unique PAIRS of ra,dec integers
         sky_coords = Pixel().get_per_pixel_RADEC(header, image_data )
-        int_ra, int_dec = np.unique(sky_coords.ra.degree.astype(int)), np.unique(sky_coords.dec.degree.astype(int))
-
-        # Because I am an eternal worrier, ensure ra wraps if near the edge
-        if 359 in int_ra or 0 in int_ra:
-            int_ra = np.unique( np.concatenate( (int_ra , [0,359] ) ) )
-
-        # set up a meshgrid of unique integer ra, dec combos
-        xx, yy = np.meshgrid( int_ra, int_dec)
+        int_radec = np.unique(np.array( [np.around(sky_coords.ra.degree).astype(int).flatten(),
+                                         np.around(sky_coords.dec.degree).astype(int).flatten() ] ).T, axis=0)
 
         # search refcat around those integer ra-dec pairs
         code = self.refcat_filepath
         dir = os.path.join(self.refcat_dir, '00_m_16')
         rad = 1
         mlim = 20
-        print(" ** WARNING: HARD-CODED MAG-LIMITS & SEARCH DIRECTORIES ** ")
+        print(" ** WARNING: HARD-CODED MAG-LIMITS & SEARCH DIRECTORIES IN find_all_stars_on_image() ** ")
         results_dict = {}
-        for ra, dec in zip(xx.flatten(), yy.flatten()) :
+        for ra, dec in int_radec :
             results_dict.update(self._read_refcat(ra, dec, code, dir,
                                      rad=rad , mlim=mlim ))
-            print(ra,dec,len(results_dict))
         
-        # get pixels corresponding to catalogue ra, decs
+        # get pixels corresponding to  (ra, dec)'s of catalog sources
         ra = np.array( [v[0] for v in results_dict.values()] )
         dec= np.array( [v[1] for v in results_dict.values()] )
         pix= np.array(WCS(header).all_world2pix(ra, dec, 1))
-        print('pix')
-        print(pix)
-        print()
-        return ra, dec , pix
+        int_pix = np.around(pix).astype(int)
+
+        # remove sources which would be more than n-Pixels from the edge of the image
+        ind = (int_pix[0] > -nPixels) \
+                                     & (int_pix[0] < nPixels + header['NAXIS1']) \
+                                         & (int_pix[1] > -nPixels) \
+                                            & (int_pix[1] < nPixels + header['NAXIS2'])
+
+        print(ra.shape, dec.shape, pix.shape, int_pix.shape, ind.shape)
+        return ra[ind], dec[ind] , np.array( [pix[0][ind], pix[1][ind] ]), np.array([int_pix[0][ind], int_pix[1][ind] ])
 
     # -------------------------------------------------------------------------------------
     # Private Methods

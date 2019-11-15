@@ -188,6 +188,8 @@ def test_find_all_stars_on_image():
     # -----------------------------------------
     RC.find_all_stars_on_image(IDS.headers[0] , IDS.data[0])
 
+
+
     print('\t Successfully tested *find_all_stars_on_image()*')
 
 
