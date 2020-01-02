@@ -40,13 +40,9 @@ class ImageDataSet():
         
         Inputs:
         -------
-        (i) images:
-        list of `astropy.io.fits.hdu.hdulist.HDUList` objects
+        (i) [optional] stacked_fits_filepath
+         - filepath to fits 'stack-file'
         
-        (ii) obs_code:
-        string
-         - mpcObs code that uniquely specifies observatory, 
-         - allows determination of observatory position as a func of time
         
         Methods:
         --------
@@ -56,45 +52,103 @@ class ImageDataSet():
 
     '''
 
-    def __init__(self, HDU_wcs_headers, HDU_data, HDU_midtimes , obs_code, HDU_unc = None) :
+    def __init__(self, *args) :
         
-        # [[ Being indicisive about how to structure ]]
-        # [[ Worried about FITS headers & WCS coeffs ]]
-        # [[ E.g. Believe PS1 fits/smf have 2-levels of WCS headers ]]
-        # [[ So how to represent this generally ? ]]
-        # [[ Will ignore the issue for now ]]
-
-        # header part of HDUs from fits: needs to contain wcs
-        self.headers = HDU_wcs_headers
+        # If an argument is supplied, try to use it to load fits 'stack-file'
+        if len(args) and os.path.isfile(args[0]):
+            self.load(args[0])
         
-        # data parts of HDUs from fits
-        self.data       = np.asarray(HDU_data)
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        # explicitly close the HDUlist object passed to __init__
+        # ...
         
-        # uncertainties parts of HDUs from fits (if any)
-        self.unc        = np.asarray(HDU_unc)
-
-        # Exposure mid-times (BJD)
-        self.mid_times = HDU_midtimes
+        # error handling ...
+        if exc_type:
+            print('exc_type: %r' % exc_type)
+            print('exc_value: %r' % exc_value)
+            print('exc_traceback: %r' % exc_traceback)
         
-        # mpcObs code that uniquely specifies observatory
-        self.obs_code  = obs_code
+        # return True to handle exception...
+        return True
 
     # -------------------------------------------------------------------------------------
     # Public Methods
     # -------------------------------------------------------------------------------------
-
-    def generate_observatory_barycentric_positions(self):
-        ''' 
-            generate barycentric-positions, one for each image
-            
-            we should use "wis.py"
-             - I wrote it at/around TESS Ninja 2: it would be good to use it
-             - N.B. wis.py currently only for space-based: would need mpc_lib functionality for ground-based
+    
+    def load(self, stacked_fits_filepath ):
         '''
+            Create an ImageDataSet object from a 'stack-fits-file' that was previously created.
+            Stack file should contain clean data that is good-to-go
+            
+            inputs:
+            -------
+            stacked_fits_filepath
+            
+            returns:
+            --------
+            ImageDataSet object
+            '''
         
-        # wis.py currently defaults to using heliocenter, so need to use barycenter
-        return wis.Satellite(self.obscode, self.mid_times, center='BARY').posns
+        # open the fits file
+        hdul = fits.open(stacked_fits_filepath)
+        
+        # get midtimes
+        midtimes = np.array( [self._get_midtime(item.header)  for item in hdul  \
+                              if isinstance(item, astropy.io.fits.hdu.image.ImageHDU )] )
+    
+        return hudl, midtimes
 
+
+    def get_theta_coordinates(self, reference_sky_coord, HDUlist ):
+        '''
+            See *generate_theta_coordinates()* for a discussion of theta-coordinates
+            
+            Will either
+            (i) read the coords from file (if previously generated)
+            (ii) generate the coords & save-to-file
+            
+            Inputs:
+            -------
+            reference_sky_coord
+             -
+            HDUlist
+             -
+            
+            Returns:
+            --------
+            theta_coords [[ ** IN WHAT FORMAT?? ** ]]
+        '''
+    
+        # attempt to read theta-coords from HDUlist
+        theta_coords = self._attempt_to_read_theta_coords_from_HDUlist(HDUlist)
+        
+        if theta_coords == False :
+        
+            # if required, do the detailed calculation of the theta coordinates
+            for HDU in HDUlist :
+                
+                # assuming that the only ImageHDUs are the actual data
+                if isinstance(HDU, astropy.io.fits.hdu.image.ImageHDU ):
+                    
+                    # calculate theta coordinates
+                    theta_coords = self._generate_theta_coordinates( reference_sky_coord , HDU.header, HDU.data )
+            
+                    # append theta coordinates to HDUlist
+                    self._append_theta_coordinates_to_HUDlist(theta_coords , HDUlist)
+        
+            # Save updated HDUlist to fits file (i.e. file now includes theta-coords)
+            
+        
+            # Re-attempt to read theta-coords from HDUlist
+            theta_coords = self._attempt_to_read_theta_coords_from_HDUlist(HDUlist)
+            assert theta_coords != False, \
+                'theta_coords could not be read despite attempt to generate'
+    
+        return theta_coords
+                
     def generate_theta_coordinates(self , reference_sky_coord , header, data ):
         ''' 
             Each pixel in an image corresponds to some RA,Dec coord (can get from wcs)
@@ -119,6 +173,12 @@ class ImageDataSet():
              
             data
              -
+             
+            Returns:
+            --------
+            theta-coords
+             - output of *_rot_vec_to_projection_coords()* function
+             - astropy.coordinates.representation.CartesianRepresentation
 
         '''
         # do something to ensure that the reference-vector is in a consistent format &/or frame
@@ -133,6 +193,53 @@ class ImageDataSet():
         # rotate ecliptic unit vector to projection plane (theta) coords
         return self._rot_vec_to_projection_coords(ecliptic_uv_CartRep ,
                                                   reference_sky_coord )
+    
+    def _append_theta_coordinates_to_HUDlist( theta_coords , HDUlist ):
+        '''
+            Append the results of running *generate_theta_coordinates()* to HDUlist
+            Includes details of the reference_sky_coord used to calculate the theta-coords
+            
+            Inputs:
+            -------
+            theta-coords
+            - output of *_rot_vec_to_projection_coords()* and/or *generate_theta_coordinates()* functions
+            - astropy.coordinates.representation.CartesianRepresentation
+            
+            HDUlist
+             - HDUlist to which theta-coord data will be passed
+            
+            Returns:
+            --------
+            ???
+        '''
+        # Record the reference_sky_coord used to calculate the theta-coords
+        # Record the original image-fits file to which these theta-coords correspond
+        # Convert the theta_coords into a binary fits table
+        # https://docs.astropy.org/en/stable/io/fits/#creating-a-new-fits-file
+        '''
+        a1 = np.array(['NGC1001', 'NGC1002', 'NGC1003'])
+        a2 = np.array([11.1, 12.3, 15.2])
+        hdu_table = fits.BinTableHDU.from_columns(
+              [fits.Column(name='target', format='20A', array=a1),
+               fits.Column(name='V_mag', format='E', array=a2)],
+              name = 'Theta'
+        '''
+        # Append to the HDUlist
+        HDUlist.append(hdu_table)
+        return HDUlist
+
+    def generate_observatory_barycentric_positions(self):
+        '''
+        generate barycentric-positions, one for each image
+        
+        we should use "wis.py"
+        - I wrote it at/around TESS Ninja 2: it would be good to use it
+        - N.B. wis.py currently only for space-based: would need mpc_lib functionality for ground-based
+        '''
+            
+        # wis.py currently defaults to using heliocenter, so need to use barycenter
+        return wis.Satellite(self.obscode, self.mid_times, center='BARY').posns
+        
 
     # -------------------------------------------------------------------------------------
     # Internal Methods
@@ -141,7 +248,8 @@ class ImageDataSet():
     def _ensure_consistent_reference_vector(self,  *args, **kwargs ):
         '''
             Previous work has often been held-up by confusion over reference frame 
-            Going to ensure that whatever is passed is made into ECLIPTIC coordinates
+            Here we ensure that the reference vector is in a SkyCoord object
+            This ensures that it can be consistently converted/interpreted
             
             inputs:
             ------
@@ -149,8 +257,8 @@ class ImageDataSet():
              
             returns:
             --------
-            ecliptic unit vector
-            - class 'astropy.coordinates.representation.CartesianRepresentation'
+            SkyCoord object to be interpreted as a unit vector
+            - class 'astropy.coordinates.sky_coordinate.SkyCoord'
             
         '''
     
@@ -188,9 +296,10 @@ class ImageDataSet():
         try:
             return sky_coord.barycentricmeanecliptic.represent_as(UnitSphericalRepresentation).represent_as(CartesianRepresentation)
         except Exception as error:
-            print('you have to pass an astropy.coordinates.sky_coordinate.SkyCoord object')
+            print('Problem might be because you have to pass an astropy.coordinates.sky_coordinate.SkyCoord object')
             print(error)
             return None
+
     
     def _skycoord_to_equatorialUV(self, sky_coord ):
         '''
@@ -217,7 +326,7 @@ class ImageDataSet():
         try:
             return sky_coord.icrs.represent_as(UnitSphericalRepresentation).represent_as(CartesianRepresentation)
         except Exception as error:
-            print('you have to pass an astropy.coordinates.sky_coordinate.SkyCoord object')
+            print('Problem might be because you have to pass an astropy.coordinates.sky_coordinate.SkyCoord object')
             print(error)
             return None
 
@@ -284,13 +393,13 @@ class ImageDataSet():
             
         '''
 
-        if 1:
+        try:
             # convert sky-coord to cart-rep in barycentric ecliptic coords
             bary_ec_cart = reference_sky_coord.barycentricmeanecliptic.represent_as(UnitSphericalRepresentation).represent_as(CartesianRepresentation).xyz.T[0]
             # transform (rotate) using matrix from _calculate_rotation_matrix
             return vec_rep.transform( self._calculate_rotation_matrix( *bary_ec_cart ) )
         
-        else:#except Exception as error:
+        except Exception as error:
             print('error in _rot_vec_to_projection_coords')
             print('may be due to passing in arrays rather than (e.g.) CartesianRepresentation')
             sys.exit('%r'%error)
