@@ -175,7 +175,7 @@ class RefCat(Downloader):
         pix = np.array(WCS(header).all_world2pix(ra, dec, 1))
         int_pix = np.around(pix).astype(int)
         
-        # offset pixels because of offset bewteen numpy & fits-fortran
+        # offset pixels because of offset between numpy & fits-fortran
         pix = pix-1
         int_pix = int_pix-1
         

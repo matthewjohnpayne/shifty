@@ -113,45 +113,6 @@ class ImagePreparer(Downloader):
         return fits.open(fits_filepath) if os.path.isfile(fits_filepath) and '.fits' in fits_filepath else None
     
     
-    """
-    ###
-    ### *** COMMENTING-OUT BECAUSE I DO NOT WANT TO OPEN MULTIPLE FILES SIMULTANEOUSLY *** 
-    ###
-    def _load_images(self, *args, **kwargs ):
-        '''
-            Load multiple images
-            (1) Interprets file_spec_container to decide what files need to be loaded
-            - ADDITIONAL PRE-FILTERING CAN/WILL BE DONE BY CHILD METHODS
-            (2) Uses "_load_image()" to open the files
-            
-            Input:
-            ------
-            valid filepath(s) to valid fits-files
-            
-            Returns:
-            --------
-            list of astropy.io.fits.hdu.hdulist.HDUList objects
-            '''
-        
-        # if kwargs contains "fits_filepaths" that are valid, then we are good to go ...
-        if 'fits_filepaths' in kwargs:
-            try:
-                fits_filepaths = [ ffp for ffp in np.atleast_1d(kwargs['fits_filepaths']) if os.path.isfile(ffp) and '.fits' in ffp ]
-            except Exception as error:
-                fits_filepaths = []
-                print('problem parsing fits_filepaths : %r' % kwargs['fits_filepaths'] )
-                print(error)
-    
-        # no other handling-methods currently in place (but CHILD may have PRE-FILTERED)
-        else:
-            print(' *** At present, no method is in place to interpret this input *** ')
-            print(' ******              No files will be loaded                 ******')
-            fits_filepaths = []
-        
-        # open filepaths
-        return [ self._load_image(fp) for fp in fits_filepaths ]
-    """
-
 
 
 
@@ -190,61 +151,22 @@ class TESSImagePreparer(ImagePreparer, TESSDownloader):
         TESSDownloader.__init__(self, )
         
         # - Define some important TESS-related quantities
-        self.obs_code               = 'C57'
+        self.obs_code = 'C57'
     
     # -------------------------------------------------------------------------------------
     # Public Methods
     # -------------------------------------------------------------------------------------
-    """
-    def get_image_data_set(self, **kwargs ):
-        '''
-        
-            *** I THINK THAT THIS IS COMENTED-OUT BECAUSE I WANT TO REPLACE IT WITH THE generate_cleaned_stack_file FUNCTION BELOW ***
-        
-            Overall image loader
-            - Gets data from file(s)
-            - Does "cleaning"
-            - Creates ImageDataSet object
-            
-            [[ N.B.(1) Decision to work on a file-by-file basis]]
-            [[ Will be dealing with >1,000 files : Want to avoid opening all files at once ]]
-            [[ https://docs.astropy.org/en/stable/io/fits/appendix/faq.html#i-m-opening-many-fits-files-in-a-loop-and-getting-oserror-too-many-open-files]]
-            
-            Inputs:
-            ------
-            (1) params to pass through to _load_image
-             - This is implicitly/explicitly defining a list of fits files 
-             
-            (2) params to pass through to _clean_data
-             - Whether/how to clean/mask/etc the data
-            
-            Returns:
-            --------
-            ImageDataSet
-        '''
-        
-        # If necessary, create 'stack file'
-        if not 'stack-file' in kwargs():
-            kwargs['stack-file'] = self._create_cleaned_stack_file( **kwargs )
-
-        # Load ImageDataSet from pre-constructed 'stack file'
-        return self._load_image_data_set_from_stack_file( kwargs['stack-file'] )
-    """
     
-    
-    def generate_cleaned_stack_file(self, **kwargs ):
+    def generate_cleaned_data(self, **kwargs ):
         '''
             This function will:
              - read raw component fits files
              - allow all aspects of "cleaning"
-             - save all component data into a single large fits file
+             - save all component data into a ...
             
-            The point is that fits-files allow easy mem-mapping
-             - This is likely to be useful if handling ~40Gb of data
-             
             returns:
             --------
-            filepath to fits 'stack-file'
+            ...
         '''
         
         # Parse the file-spec and decide what fits-files will be loaded
@@ -257,7 +179,6 @@ class TESSImagePreparer(ImagePreparer, TESSDownloader):
         new_hdul = self._initialize_stack_HDUlist(stack_fits_filepath, **kwargs)
 
         # Loop over the files sequentially
-        # - N.B. Decision to work on a file-by-file basis (conserve mem, reduce # open files)
         for fits_filepath in fits_filepaths:
             
             # open & read the individual TESS fits file
@@ -325,7 +246,6 @@ class TESSImagePreparer(ImagePreparer, TESSDownloader):
                 fits_filepaths = self._ensure_test_data_available_locally()
             
             # If the sector/camera/chip specified, then get the required filepaths
-            # [[ *** AS WRITTEN THIS WILL ONLY RETURN THE DATA FOR A SINGLE CHIP *** ]]
             elif    np.all( [_ in kwargs for _ in ['sectorNumber', 'cameraNumber', 'chipNumber']] ) \
                 and isinstance(kwargs['sectorNumber'], int) \
                     and isinstance(kwargs['cameraNumber'], int) \
@@ -483,13 +403,14 @@ class TESSImagePreparer(ImagePreparer, TESSDownloader):
         cleaning_function_dict = OrderedDict([
                                               ('mask'      , self._mask_stars ),
                                               ('subtract'  , self._subtract_stars ),
+                                              ('clip'      , self._clip_peaks ),
                                               ('bad_cad'   , self._remove_bad_cadences ),
                                               ('scat'      , self._remove_scattered_light_problem_areas ),
                                               ('strap'     , self._remove_strap_regions ),
                                               ])
             
         # loop over possible funcs (in order of dict)
-        # [[ NOTICE THE IMPLICIT DESIGN CHOICE THAT ALL CLEANING FUNCTIONS MUST RETURN HDU_data]]
+        # [[ N.B. HDU_data should be modified in-place by functions ]]
         for key, func_to_run in cleaning_function_dict.items():
             # run a function if it is included as True in cleaning_parameters (e.g. {'mask':True})
             if key in kwargs and kwargs[key]:
@@ -507,7 +428,7 @@ class TESSImagePreparer(ImagePreparer, TESSDownloader):
             
             This is *NOT* subtraction (see _subtract_stars below )
             
-            Presumably only one of _mask_stars / _subtract_stars is required, but I am 100% certain that Holman will at least want to experiment with subtraction
+            Presumably only one of _mask_stars / _subtract_stars / _clip_peaks is required
             
         '''
         
@@ -520,7 +441,8 @@ class TESSImagePreparer(ImagePreparer, TESSDownloader):
             kwargs['refcat_dict'] = {}
             ra,dec,pix,int_pix = RefCat().find_all_stars_on_image(header , imageData)
             kwargs['refcat_dict']['ra'], kwargs['refcat_dict']['dec'] , kwargs['refcat_dict']['pix'] , kwargs['refcat_dict']['int_pix'] = ra,dec,pix, int_pix
-     
+    
+    
         # Need to do something about deciding how big a mask to use, based on the source magnitude
         # Perhaps something from photutils
         # https://photutils.readthedocs.io/en/stable/psf.html
@@ -531,27 +453,26 @@ class TESSImagePreparer(ImagePreparer, TESSDownloader):
 
         # mask all of the stars
         # - N.B. this is likely to fail if nPixels > 0 in RefCat().find_all_stars_on_image()
+        # - N.B. this alters imageData-in-place ...
         rows, cols = kwargs['refcat_dict']['int_pix'][1] , kwargs['refcat_dict']['int_pix'][0]
         imageData[rows, cols] = 0
-            
-        #return imageData
+        
 
-    def _subtract_stars(self,header , imageData, **kwargs):
+    def _subtract_stars(self, header , imageData, **kwargs):
         '''
             We want to remove stars in some way
             Holman & Payne have generally assumed some form of subtraction
             
             This is *NOT* masking (see _mask_stars )
             
-            Presumably only one of _mask_stars / _subtract_stars is required, but I am 100% certain that Holman will at least want to experiment with subtraction
+            Presumably only one of _mask_stars / _subtract_stars / _clip_peaks is required
+             - but I am 100% certain that Holman will at least want to experiment with subtraction
             
             Input:
             --------
-            list HDUs
             
             Returns:
             --------
-            list HDUs
         '''
         # Naive
         # - Just do subtraction of first image as template, with little/no registering (that's what Oelkers ended up doing in TESS RNAAS)
@@ -568,7 +489,22 @@ class TESSImagePreparer(ImagePreparer, TESSDownloader):
         # https://github.com/acbecker/hotpants
         
         
-        return HDUs
+        pass
+    
+    def _clip_peaks(self, header , imageData, **kwargs):
+        '''
+            We want to remove stars in some way
+            Could use some form of peak-clipping to remove any/all points above some ~background level
+
+            Presumably only one of _mask_stars / _subtract_stars / _clip_peaks is required
+            
+            Input:
+            --------
+            
+            Returns:
+            --------
+            '''
+    
 
     def _remove_bad_cadences(self,header , imageData, **kwargs):
         '''
@@ -583,7 +519,7 @@ class TESSImagePreparer(ImagePreparer, TESSDownloader):
             --------
             list HDUs
         '''
-        return HDUs
+        pass
 
     def _remove_scattered_light_problem_areas(self,header , imageData, **kwargs):
         '''
@@ -599,7 +535,7 @@ class TESSImagePreparer(ImagePreparer, TESSDownloader):
             --------
             list HDUs
         '''
-        return HDUs
+        pass
 
     def _remove_strap_regions(self,header , imageData, **kwargs):
         '''
@@ -614,7 +550,7 @@ class TESSImagePreparer(ImagePreparer, TESSDownloader):
             --------
             list HDUs
         '''
-        return HDUs
+        pass
 
 
 

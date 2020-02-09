@@ -276,6 +276,7 @@ class ImageDataSet():
     def _skycoord_to_ecUV(self, sky_coord ):
         '''
             convert sky_coord (ra,dec) to unit-vector in BARYCENTRIC ECLIPTIC coordinates
+            
             https://docs.astropy.org/en/stable/coordinates/
             https://docs.astropy.org/en/stable/coordinates/#built-in-frame-classes
             https://docs.astropy.org/en/stable/coordinates/representations.html
