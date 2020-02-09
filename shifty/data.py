@@ -267,7 +267,7 @@ class ImageDataSet():
         ref_vec = None
         for arg in args:
             if isinstance(arg, astropy.coordinates.sky_coordinate.SkyCoord):
-                return arg
+                return arg #<<-- This doesn't seem like it would work: why indented like this ?????
     
  
     

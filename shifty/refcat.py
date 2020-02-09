@@ -110,8 +110,9 @@ class RefCat(Downloader):
                     wget.download(remote_filepath, filepath)
                     assert os.path.isfile(filepath)
     
-                    # untar the file you just downloaded
-                    # self._untar_refcat( *args)
+                    # if a tar-file, un-tar it
+                    if filename[-4:] == ".tbz":
+                        self._untar_refcat( *args)
 
     def compile_refcat(self, ):
         '''
@@ -131,7 +132,7 @@ class RefCat(Downloader):
         assert os.getcwd() == orig_workingdir
     
     
-    def find_all_stars_on_image(self,  header, image_data , nPixels = 3 ):
+    def find_all_stars_on_image(self,  header, image_data , nPixels = 0 ):
         '''
             given image-data (and associated header) use refcat to find all of the stars that fall on the image
             
@@ -154,26 +155,40 @@ class RefCat(Downloader):
         dir = os.path.join(self.refcat_dir, '00_m_16')
         rad = 1
         mlim = 20
-        print(" ** WARNING: HARD-CODED MAG-LIMITS & SEARCH DIRECTORIES IN find_all_stars_on_image() ** ")
+        print("\
+              **\
+              WARNING: HARD-CODED MAG-LIMITS & SEARCH DIRECTORIES IN find_all_stars_on_image()\
+              **\
+              ")
         results_dict = {}
         for ra, dec in int_radec :
-            results_dict.update(self._read_refcat(ra, dec, code, dir,
-                                     rad=rad , mlim=mlim ))
+            results_dict.update(self._read_refcat(ra,
+                                                  dec,
+                                                  code,
+                                                  dir,
+                                                  rad=rad ,
+                                                  mlim=mlim ))
         
         # get pixels corresponding to  (ra, dec)'s of catalog sources
-        ra = np.array( [v[0] for v in results_dict.values()] )
-        dec= np.array( [v[1] for v in results_dict.values()] )
-        pix= np.array(WCS(header).all_world2pix(ra, dec, 1))
+        ra  = np.array( [v[0] for v in results_dict.values()] )
+        dec = np.array( [v[1] for v in results_dict.values()] )
+        pix = np.array(WCS(header).all_world2pix(ra, dec, 1))
         int_pix = np.around(pix).astype(int)
-
+        
+        # offset pixels because of offset bewteen numpy & fits-fortran
+        pix = pix-1
+        int_pix = int_pix-1
+        
         # remove sources which would be more than n-Pixels from the edge of the image
-        ind = (int_pix[0] > -nPixels) \
-                                     & (int_pix[0] < nPixels + header['NAXIS1']) \
-                                         & (int_pix[1] > -nPixels) \
-                                            & (int_pix[1] < nPixels + header['NAXIS2'])
+        ind = (int_pix[0] > -nPixels) & \
+              (int_pix[0] < nPixels + header['NAXIS1']) & \
+              (int_pix[1] > -nPixels) & \
+              (int_pix[1] < nPixels + header['NAXIS2'])
 
-        print(ra.shape, dec.shape, pix.shape, int_pix.shape, ind.shape)
-        return ra[ind], dec[ind] , np.array( [pix[0][ind], pix[1][ind] ]), np.array([int_pix[0][ind], int_pix[1][ind] ])
+        return  ra[ind],\
+                dec[ind] ,\
+                np.array( [pix[0][ind], pix[1][ind] ]),\
+                np.array([int_pix[0][ind], int_pix[1][ind] ])
 
     # -------------------------------------------------------------------------------------
     # Private Methods
@@ -238,7 +253,9 @@ class RefCat(Downloader):
         
         # run refcat and pipe results from command-line into string
         # split up string and put into dictionary
-        # dictionary entries look like key = (str(ra),str(dec)), value = np.array(['ra', 'dec', 'g', 'r', 'i', 'z', 'J', 'c', 'o'])
+        # dictionary entries look like ...
+        # key   = (str(ra),str(dec)),
+        # value = np.array(['ra', 'dec', 'g', 'r', 'i', 'z', 'J', 'c', 'o'])
         result = subprocess.run([code, str(ra), str(dec),  '-rad', str(rad), '-mlim', str(mlim), '-dir', dir], stdout=subprocess.PIPE).stdout.decode('utf-8').split('\n')
         return {  (row.split()[0],row.split()[1]) : np.array([float(_) for _ in row.split()  ]) for row in result if len(row)>20}
     

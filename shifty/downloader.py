@@ -29,6 +29,9 @@ class Downloader():
     '''
         Parent class for ...
          - TessDownloader, HSTDownloader, ...
+         
+        This parent class is NOT likely to be used directly by the user
+         - The child classes (TessDownloader, HSTDownloader, ...) will be used instead
 
     '''
     
@@ -83,6 +86,10 @@ class Downloader():
 class TESSDownloader(Downloader):
     '''
         Methods to download TESS data (from mast)
+        Includes methods for downloading
+        - FFIs
+        - PRFs
+        
     '''
         
     def __init__(self, ) :
