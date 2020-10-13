@@ -86,6 +86,7 @@ class Known(Downloader):
     def _get_object_RADEC_from_horizons(self, objectName, obsCode, times ):
         '''
             query horizons for the RA,DEC of a *known object* at a sequence of times
+             - perhaps steal import/code from cheby_checker?
             
         '''
         pass
@@ -93,6 +94,7 @@ class Known(Downloader):
     def _get_object_XYZ_from_horizons(self, objectName, obsCode, times):
         '''
             query horizons for the BARYCENTRIC POSITION of a *known object* at a sequence of times
+             - perhaps steal import/code from cheby_checker?
         '''
     
 
@@ -123,18 +125,22 @@ class Known(Downloader):
     def _propagate_orbit_keplerian():
         '''
             propagate an orbit using keplerian methods
-            [[think about chebyshev]]
+             - perhaps steal import/code from cheby_checker?
+             - perhaps steal import/code from neocp var-orb?
+
         '''
         pass
+        
     def _propagate_orbit_nbody():
         '''
             propagate an orbit using nbody methods
-            [[think about chebyshev]]
+             - perhaps steal import/code from cheby_checker?
         '''
         pass
     def _convert_XYZ_to_RADEC():
         ''' 
             convert XYZ positions to apparent RA, Dec
+             - perhaps steal import/code from cheby_checker?
         '''
         pass
 

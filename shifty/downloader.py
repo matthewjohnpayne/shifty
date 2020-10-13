@@ -1,5 +1,7 @@
 '''
    Classes / Methods for downloading fits files (e.g. from MAST) to the user's local disk
+   
+   Overengineed for something that won't be used much ...
 '''
 
 # -------------------------------------------------------------------------------------

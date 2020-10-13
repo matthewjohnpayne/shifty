@@ -1,5 +1,6 @@
 '''
-    Definition of shifty.py's     
+    Definition of shifty.py's "OrbitHypothesis" class which we use to keep track of the different
+    shifts we attempt. 
 '''
 
 # -------------------------------------------------------------------------------------
