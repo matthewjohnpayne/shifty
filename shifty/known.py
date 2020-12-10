@@ -54,8 +54,11 @@ class Known(Downloader):  # MA: Why is Downloader a base class here???
 
     '''
 
-    def __init__(self, ):
+    def __init__(self, **kwargs):
         super().__init__()
+        if 'obs_code' in kwargs and 'times' in kwargs and \
+           (('object_name' in kwargs) or ('orbit' in kwargs)):
+            self.get_known_RADEC(**kwargs)
 
     # -------------------------------------------------------------------------
     # Public Methods
@@ -68,8 +71,11 @@ class Known(Downloader):  # MA: Why is Downloader a base class here???
         if 'obs_code' not in kwargs or 'times' not in kwargs:
             sys.exit('get_known_RADEC() always requires at least '
                      '*obs_code* and an array of *times* to be specified')
+        else:
+            self.times = kwargs['times']
+            self.obs_code = kwargs['obs_code']
 
-        if 'object' in kwargs:
+        if 'object_name' in kwargs:
             self._get_object_RADEC_from_horizons(**kwargs)
         elif 'orbit' in kwargs:
             self._get_orbit_RADEC(**kwargs)
@@ -95,21 +101,35 @@ class Known(Downloader):  # MA: Why is Downloader a base class here???
     # Private Methods
     # -------------------------------------------------------------------------
 
-    def _get_object_RADEC_from_horizons(self, objectName, obsCode, times):
+    def _get_object_RADEC_from_horizons(self, object_name, obs_code, times,
+                                        object_type='smallbody'):
         '''
             Query horizons for the RA & DEC of a *known object*
             at a sequence of times.
+            object_type keyword implemented with default of 'smallbody', just
+            in case we ever need to use other body categories, like natsats.
         '''
-        print('_get_object_RADEC_from_horizons: Not yet implemented')
-        assert False
+        horizons_query = Horizons(id=object_name, location=obs_code,
+                                  epochs=times, id_type=object_type)
+        horizons_ephem = horizons_query.ephemerides(extra_precision=True)
+        self.RA, self.Dec = np.array([horizons_ephem['RA'],
+                                      horizons_ephem['DEC']])
 
-    def _get_object_XYZ_from_horizons(self, objectName, obsCode, times):
+    def _get_object_XYZ_from_horizons(self, object_name, times,
+                                      object_type='smallbody',
+                                      plane='ecliptic'):
         '''
             Query horizons for the BARYCENTRIC VECTOR of a *known object*
-            at a sequence of times
+            at a sequence of times.
+            objectType keyword implemented with default of 'smallbody', just
+            in case we ever need to use other body categories, like natsats.
+            Use plane='earth' for equatorial (I wasn't sure which we wanted).
         '''
-        print('_get_object_XYZ_from_horizons: Not yet implemented')
-        assert False
+        horizons_query = Horizons(id=object_name, location='500@0',
+                                  epochs=times, id_type=object_type)
+        horizons_vector = horizons_query.vectors(refplane=plane)
+        self.XYZ = np.array([horizons_vector['x'], horizons_vector['y'],
+                              horizons_vector['z']])
 
     def _get_orbit_RADEC(self, **kwargs):
         '''
@@ -170,33 +190,33 @@ class Known(Downloader):  # MA: Why is Downloader a base class here???
     # Convenience funcs while developing ...
     # -------------------------------------------------------------------------
 
-    def _interpolate_radec_for_sedna(self, times):
+    def _interpolate_radec_for_sedna(self, times, obs_code='C57'):
         '''
             '''
         # Get the look-up arrays
-        JD_, RA_, Dec_ = self._radec_for_sedna()
+        JD_, RA_, Dec_ = self._radec_for_sedna(obs_code=obs_code)
 
         # Interpolate the RA & Dec at the input times
         return np.interp(times, JD_, RA_), np.interp(times, JD_, Dec_)
 
-    def _interpolate_radec_for_101583(self, times):
+    def _interpolate_radec_for_101583(self, times, obs_code='C57'):
         '''
             '''
         # Get the look-up arrays
-        JD_, RA_, Dec_ = self._radec_for_101583()
+        JD_, RA_, Dec_ = self._radec_for_101583(obs_code=obs_code)
 
         # Interpolate the RA & Dec at the input times
         return np.interp(times, JD_, RA_), np.interp(times, JD_, Dec_)
 
-    def _radec_for_sedna(self,):
+    def _radec_for_sedna(self, obs_code='C57'):
         '''
             '''
-        return _radec_from_file(obj='sedna')
+        return _radec_from_file(obj='sedna', obs_code=obs_code)
 
-    def _radec_for_101583(self,):
+    def _radec_for_101583(self, obs_code='C57'):
         '''
             '''
-        return _radec_from_file(obj='101583')
+        return _radec_from_file(obj='101583', obs_code=obs_code)
 
 
 def _interpolate_radec(times, inputJRD):
@@ -213,8 +233,11 @@ def _interpolate_radec(times, inputJRD):
     return np.interp(times, JD_, RA_), np.interp(times, JD_, Dec_)
 
 
-def _radec_from_file(obj='sedna'):  # Thus also works for 101583
-    JD_, RA_, Dec_ = np.genfromtxt(os.path.join(DATA_DIR, obj + '_ephem.txt'),
+def _radec_from_file(obj='sedna', obs_code='C57'):  # Thus also works for 101583
+    if obs_code=='500@-95':
+        obs_code = 'C57'
+    filename = obj + '_ephem_' + obs_code + '.txt'
+    JD_, RA_, Dec_ = np.genfromtxt(os.path.join(DATA_DIR, filename),
                                    usecols=(0, 1, 2), unpack=True)
     return JD_, RA_, Dec_
 
