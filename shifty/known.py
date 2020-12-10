@@ -1,6 +1,6 @@
 '''
-    methods to propagate known orbits for shifty.py
-     - can be known *objects* or specified *orbit*
+Methods to propagate known orbits for shifty.py
+ - can be known *objects* or specified *orbit*
 
 '''
 
@@ -35,23 +35,25 @@ DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(
 
 class Known(Downloader):  # MA: Why is Downloader a base class here???
     '''
-        class to deal with propagatation of known orbits
+    Class to deal with propagatation of known orbits
 
-        methods:
-        --------
-        get_known_RADEC()
-        convert_Keplerian_to_Alpha()
-        convert_Alpha_to_Keplerian()
-        _get_object_RADEC_from_horizons()
-        _get_object_XYZ_from_horizons
-        _get_orbit_RADEC()
-        _convert_XYZ_to_RADEC()
-        _propagate_orbit_keplerian()
-        _propagate_orbit_nbody()
+    methods:
+    --------
+    get_known_RADEC()
+    convert_Keplerian_to_Alpha()
+    convert_Alpha_to_Keplerian()
+    _get_object_RADEC_from_horizons()
+    _get_object_XYZ_from_horizons
+    _get_orbit_RADEC()
+    _convert_XYZ_to_RADEC()
+    _propagate_orbit_keplerian()
+    _propagate_orbit_nbody()
 
-        _interpolate_radec_for_sedna()
-
-
+    For development only:
+    _interpolate_radec_for_sedna()
+    _interpolate_radec_for_101583()
+    _radec_for_sedna()
+    _radec_for_101583()
     '''
 
     def __init__(self, **kwargs):
@@ -65,8 +67,10 @@ class Known(Downloader):  # MA: Why is Downloader a base class here???
     # -------------------------------------------------------------------------
     def get_known_RADEC(self, **kwargs):
         '''
-           General method to get RADEC for specified object/orbit
-           - calls specific sub-method as necessary
+        General method to get RADEC for specified object/orbit
+        - calls specific sub-method as necessary:
+           _get_object_RADEC_from_horizons if "object_name" supplied,
+           _get_orbit_RADEC if "orbit" is supplied [not functional yet])
         '''
         if 'obs_code' not in kwargs or 'times' not in kwargs:
             sys.exit('get_known_RADEC() always requires at least '
@@ -84,15 +88,15 @@ class Known(Downloader):  # MA: Why is Downloader a base class here???
 
     def convert_Keplerian_to_Alpha(self, **kwargs):
         '''
-            Convert a Keplerian orbit representation to the "tangent-plane"
-            Alpha,Beta,Gamma,... representation.
+        Convert a Keplerian orbit representation to the "tangent-plane"
+        Alpha,Beta,Gamma,... representation.
         '''
         print('convert_Keplerian_to_Alpha: Not yet implemented')
         assert False
 
     def convert_Alpha_to_Keplerian(self, **kwargs):
         '''
-            Inverse of convert_Keplerian_to_Alpha
+        Inverse of convert_Keplerian_to_Alpha
         '''
         print('convert_Alpha_to_Keplerian: Not yet implemented')
         assert False
@@ -104,10 +108,18 @@ class Known(Downloader):  # MA: Why is Downloader a base class here???
     def _get_object_RADEC_from_horizons(self, object_name, obs_code, times,
                                         object_type='smallbody'):
         '''
-            Query horizons for the RA & DEC of a *known object*
-            at a sequence of times.
-            object_type keyword implemented with default of 'smallbody', just
-            in case we ever need to use other body categories, like natsats.
+        Query horizons for the RA & DEC of a
+        *known object* at a sequence of times.
+        input:
+        object_name - string
+        obs_code    - string
+                    - Note that Horizons uses some weird ones sometimes,
+                      like "500@-95" for Tess.
+        times       - array
+        object_type - string
+                    - Usually the default "smallbody" is fine, 
+                      but for some objects, like natsats, it's neccessary.
+
         '''
         horizons_query = Horizons(id=object_name, location=obs_code,
                                   epochs=times, id_type=object_type)
@@ -117,13 +129,19 @@ class Known(Downloader):  # MA: Why is Downloader a base class here???
 
     def _get_object_XYZ_from_horizons(self, object_name, times,
                                       object_type='smallbody',
-                                      plane='ecliptic'):
+                                      plane='earth'):
         '''
-            Query horizons for the BARYCENTRIC VECTOR of a *known object*
-            at a sequence of times.
-            objectType keyword implemented with default of 'smallbody', just
-            in case we ever need to use other body categories, like natsats.
-            Use plane='earth' for equatorial (I wasn't sure which we wanted).
+        Query horizons for the BARYCENTRIC VECTOR of a
+        *known object* at a sequence of times.
+        input:
+        object_name - string
+        times       - array
+        object_type - string
+                    - Usually the default "smallbody" is fine, 
+                      but for some objects, like natsats, it's neccessary.
+        plane       - string
+                    - 'earth' = equatorial
+                    - 'ecliptic' = ecliptic
         '''
         horizons_query = Horizons(id=object_name, location='500@0',
                                   epochs=times, id_type=object_type)
@@ -133,17 +151,17 @@ class Known(Downloader):  # MA: Why is Downloader a base class here???
 
     def _get_orbit_RADEC(self, **kwargs):
         '''
-            Propagate a specified orbit and then calculate the expected
-            RA, DEC at a sequence of times.
-             - wrapper around lower level method
-            [[** to make life easier, demand observatory position be
-              directly supplied ?? **]]
+        Propagate a specified orbit and then calculate the expected
+        RA, DEC at a sequence of times.
+         - wrapper around lower level method
+        [[** to make life easier, demand observatory position be
+          directly supplied ?? **]]
 
-            inputs:
-            -------
+        inputs:
+        -------
 
-            returns:
-            --------
+        returns:
+        --------
         '''
         # do the propagation of the orbit
         if 'keplerian' in kwargs and kwargs['keplerian']:
@@ -159,9 +177,9 @@ class Known(Downloader):  # MA: Why is Downloader a base class here???
 
     def _propagate_orbit_keplerian(self, ):
         '''
-            propagate an orbit using keplerian methods
-             - perhaps steal import/code from cheby_checker?
-             - perhaps steal import/code from neocp var-orb?
+        propagate an orbit using keplerian methods
+         - perhaps steal import/code from cheby_checker?
+         - perhaps steal import/code from neocp var-orb?
 
         '''
         print('_propagate_orbit_keplerian: Not yet implemented')
@@ -170,8 +188,8 @@ class Known(Downloader):  # MA: Why is Downloader a base class here???
 
     def _propagate_orbit_nbody(self, ):
         '''
-            propagate an orbit using nbody methods
-             - perhaps steal import/code from cheby_checker?
+        propagate an orbit using nbody methods
+         - perhaps steal import/code from cheby_checker?
         '''
         print('_propagate_orbit_nbody: Not yet implemented')
         assert False
@@ -179,8 +197,8 @@ class Known(Downloader):  # MA: Why is Downloader a base class here???
 
     def _convert_XYZ_to_RADEC(self, ):
         '''
-            convert XYZ positions to apparent RA, Dec
-             - perhaps steal import/code from cheby_checker?
+        convert XYZ positions to apparent RA, Dec
+         - perhaps steal import/code from cheby_checker?
         '''
         print('_convert_XYZ_to_RADEC: Not yet implemented')
         assert False
@@ -192,26 +210,25 @@ class Known(Downloader):  # MA: Why is Downloader a base class here???
 
     def _interpolate_radec_for_sedna(self, times, obs_code='C57'):
         '''
-            '''
-        # Get the look-up arrays
-        JD_, RA_, Dec_ = self._radec_for_sedna(obs_code=obs_code)
-
-        # Interpolate the RA & Dec at the input times
-        return np.interp(times, JD_, RA_), np.interp(times, JD_, Dec_)
+        Interpolate the RA & Dec at the input times.
+        '''
+        return _interpolate_radec(times,
+                                  _radec_from_file(obj='Sedna',
+                                                   obs_code=obs_code))
 
     def _interpolate_radec_for_101583(self, times, obs_code='C57'):
         '''
-            '''
-        # Get the look-up arrays
-        JD_, RA_, Dec_ = self._radec_for_101583(obs_code=obs_code)
-
-        # Interpolate the RA & Dec at the input times
-        return np.interp(times, JD_, RA_), np.interp(times, JD_, Dec_)
+        Interpolate the RA & Dec at the input times.
+        '''
+        return _interpolate_radec(times,
+                                  _radec_from_file(obj='Sedna',
+                                                   obs_code=obs_code))
 
     def _radec_for_sedna(self, obs_code='C57'):
         '''
-            '''
-        return _radec_from_file(obj='sedna', obs_code=obs_code)
+        Get RA & Dec at hourly intervals from file.
+        '''
+        return _radec_from_file(obj='Sedna', obs_code=obs_code)
 
     def _radec_for_101583(self, obs_code='C57'):
         '''
@@ -221,10 +238,10 @@ class Known(Downloader):  # MA: Why is Downloader a base class here???
 
 def _interpolate_radec(times, inputJRD):
     '''
-        Interpolate the RA & Dec at the input times
-        input:
-        times - array of times for output
-        inputJRD - tuple of JD_, RA_ and Dec_ of data for interpolation
+    Interpolate the RA & Dec at the input times.
+    input:
+    times - array of times for output
+    inputJRD - tuple of JD_, RA_ and Dec_ of data for interpolation
     '''
 
     JD_, RA_, Dec_ = inputJRD
@@ -233,12 +250,19 @@ def _interpolate_radec(times, inputJRD):
     return np.interp(times, JD_, RA_), np.interp(times, JD_, Dec_)
 
 
-def _radec_from_file(obj='sedna', obs_code='C57'):  # Thus also works for 101583
+def _radec_from_file(obj='Sedna', obs_code='C57'):
+    '''
+    Read JD, RA & Dec from file for a given object and obs_code.
+    input:
+    obj      - string - object name
+    obs_code - string - observatory code. 
+    '''
     if obs_code=='500@-95':
         obs_code = 'C57'
     filename = obj + '_ephem_' + obs_code + '.txt'
     JD_, RA_, Dec_ = np.genfromtxt(os.path.join(DATA_DIR, filename),
-                                   usecols=(0, 1, 2), unpack=True)
+                                   delimiter=(17, 5, 13, 13),
+                                   usecols=(0, 2, 3), unpack=True)
     return JD_, RA_, Dec_
 
 
