@@ -266,4 +266,32 @@ def _radec_from_file(obj='Sedna', obs_code='C57'):
     return JD_, RA_, Dec_
 
 
+def _xyz_interp(times, inputJRD):
+    '''
+    Interpolate the XYZ at the input times
+    input:
+    times - array of times for output
+    inputJXYZ - tuple of JD_, X_, Y_ and Z_ of data for interpolation
+    '''
+
+    JD_, X_, Y_, Z_ = inputJRD
+
+    # Interpolate the RA & Dec at the input times
+    return (np.interp(times, JD_, X_), np.interp(times, JD_, Y_),
+            np.interp(times, JD_, Z_))
+
+
+def _xyz_from_file(obj='Sedna'):
+    '''
+    Read JD, X, Y and Z from file for a given object and obs_code.
+    input:
+    obj      - string - object name
+    '''
+    filename = obj + '_vector.txt'
+    JD_, X_, Y_, Z_ = np.genfromtxt(os.path.join(DATA_DIR, filename),
+                                    delimiter=(17, 66, 23, 3, 23, 3, 23),
+                                    usecols=(0, 2, 4, 6), unpack=True)
+    return JD_, X_, Y_, Z_
+
+
 # End of file

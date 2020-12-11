@@ -1,5 +1,5 @@
 '''
-    Tests of Classes / Methods for dealing with known objects.
+Tests of Classes / Methods for dealing with known objects.
 '''
 
 
@@ -46,7 +46,9 @@ aeiOoME_sedna = [484.5211488, 0.8426141, 11.93068, 144.24763,  # a, e, i, O
 
 
 def test_empty_instantiation():
-    '''Test the class instantiation with no input'''
+    '''
+    Test the class instantiation with no input
+    '''
     # Test creation of Known object
     K = known.Known()
     assert isinstance(K, known.Known), \
@@ -66,8 +68,9 @@ values_for_each_test = [
  ]
 @pytest.mark.parametrize(names_of_variables, values_for_each_test)
 def test__get_object_RADEC_from_horizons(object_name, obs_code, times):
-    '''Test the private method for getting RA/Dec for
-       a known object from Horizons.'''
+    '''
+    Test the private method for getting RA/Dec from Horizons for known objects.
+    '''
     K = known.Known()
     K._get_object_RADEC_from_horizons(obs_code=obs_code, times=times,
                                       object_name=object_name)
@@ -95,7 +98,9 @@ values_for_each_test = [
  ]
 @pytest.mark.parametrize(names_of_variables, values_for_each_test)
 def test_get_known_RADEC_name(object_name, obs_code, times):
-    '''Test the method for getting RA/Dec for a known object, using name.'''
+    '''
+    Test the method for getting RA/Dec for a known object, using name.
+    '''
     K = known.Known()
     K.get_known_RADEC(obs_code=obs_code, times=times, object_name=object_name)
     # Test that K.RA, K.Dec, K.times & K.obs_code exist and have expected type.
@@ -127,7 +132,9 @@ values_for_each_test = [
  ]
 @pytest.mark.parametrize(names_of_variables, values_for_each_test)
 def test_instantiate_with_object_name(object_name, obs_code, times):
-    '''Test the class instantiation with an object name.'''
+    '''
+    Test the class instantiation with an object name.
+    '''
     K = known.Known(obs_code=obs_code, times=times, object_name=object_name)
     # Test that K.RA, K.Dec, K.times & K.obs_code exist and have expected type.
     assert isinstance(K.RA, np.ndarray)
@@ -154,7 +161,9 @@ values_for_each_test = [
  ]
 @pytest.mark.parametrize(names_of_variables, values_for_each_test)
 def test__get_orbit_RADEC(orbit, obs_code, times):
-    '''Test the private method for getting RA/Dec from an orbit.'''
+    '''
+    Test the private method for getting RA/Dec from an orbit.
+    '''
     K = known.Known()
     K._get_orbit_RADEC(obs_code=obs_code, times=times, orbit=orbit)
     # Test that K.RA, K.Dec exist and have expected type.
@@ -177,7 +186,9 @@ values_for_each_test = [
  ]
 @pytest.mark.parametrize(names_of_variables, values_for_each_test)
 def test_get_known_RADEC_orbit(orbit, obs_code, times):
-    '''Test the method for getting RA/Dec for a known object, using orbit.'''
+    '''
+    Test the method for getting RA/Dec for a known object, using orbit.
+    '''
     K = known.Known()
     K.get_known_RADEC(obs_code=obs_code, times=times, orbit=orbit)
     # Test that K.RA, K.Dec, K.times & K.obs_code exist and have expected type.
@@ -198,25 +209,25 @@ def test_get_known_RADEC_orbit(orbit, obs_code, times):
     print('\t Completed test_get_known_RADEC_orbit.')
 
 
-names_of_variables = ('object_name', 'obs_code', 'times', 'expected_XYZ')
+names_of_variables = ('object_name', 'times')
 values_for_each_test = [
-    pytest.param('Sedna', '568', all_times, [0, 0, 0],  # xyz_sedna_568,
-                 marks=mark.xfail(reason='Test not fully implemented.')),
+    ('Sedna', all_times),
  ]
 @pytest.mark.parametrize(names_of_variables, values_for_each_test)
-def test__get_object_XYZ_from_horizons(object_name, obs_code, times,
-                                       expected_XYZ):
-    '''Test the private method for getting RA/Dec for
-       a known object from Horizons.'''
+def test__get_object_XYZ_from_horizons(object_name, times):
+    '''
+    Test the private method for getting XYZ for a known object from Horizons.
+    '''
     K = known.Known()
-    K._get_object_XYZ_from_horizons(obs_code=obs_code, times=times,
-                                    object_name=object_name)
+    K._get_object_XYZ_from_horizons(times=times, object_name=object_name)
     # Test that K.XYZ exist and have expected type.
     assert isinstance(K.XYZ, np.ndarray)
     # Test that K.XYZ have expected shape.
-    assert np.shape(K.XYZ) == np.shape([times, 3])
+    assert np.shape(K.XYZ) == (3, np.shape(times)[0])
     # Test that K.XYZ have expected values.
-    assert np.all(np.isclose(K.XYZ, expected_XYZ, atol=0.00000001, rtol=0))
+    expect_XYZ = _xyz_interp(times, _xyz_from_file('Sedna'))
+    #0.000000000001 AU is 15 cm
+    assert np.all(np.isclose(K.XYZ, expect_XYZ, atol=0.000000000001, rtol=0))
     print('\t Completed test__get_object_XYZ_from_horizons.')
 
 
@@ -227,10 +238,10 @@ def test__get_object_XYZ_from_horizons(object_name, obs_code, times,
 
 def _radec_interp(times, inputJRD):
     '''
-        Interpolate the RA & Dec at the input times
-        input:
-        times - array of times for output
-        inputJRD - tuple of JD_, RA_ and Dec_ of data for interpolation
+    Interpolate the RA & Dec at the input times
+    input:
+    times - array of times for output
+    inputJRD - tuple of JD_, RA_ and Dec_ of data for interpolation
     '''
 
     JD_, RA_, Dec_ = inputJRD
@@ -239,7 +250,13 @@ def _radec_interp(times, inputJRD):
     return np.interp(times, JD_, RA_), np.interp(times, JD_, Dec_)
 
 
-def _radec_from_file(obj='sedna', obs_code='C57'):  # Thus also works for 101583
+def _radec_from_file(obj='Sedna', obs_code='C57'):  # Thus also works for 101583
+    '''
+    Read JD, RA & Dec from file for a given object and obs_code.
+    input:
+    obj      - string - object name
+    obs_code - string - observatory code. 
+    '''
     if obs_code == '500@-95':
         obs_code = 'C57'
     filename = obj + '_ephem_' + obs_code + '.txt'
@@ -247,6 +264,34 @@ def _radec_from_file(obj='sedna', obs_code='C57'):  # Thus also works for 101583
                                    delimiter=(17, 5, 13, 13),
                                    usecols=(0, 2, 3), unpack=True)
     return JD_, RA_, Dec_
+
+
+def _xyz_interp(times, inputJRD):
+    '''
+    Interpolate the XYZ at the input times
+    input:
+    times - array of times for output
+    inputJXYZ - tuple of JD_, X_, Y_ and Z_ of data for interpolation
+    '''
+
+    JD_, X_, Y_, Z_ = inputJRD
+
+    # Interpolate the RA & Dec at the input times
+    return (np.interp(times, JD_, X_), np.interp(times, JD_, Y_),
+            np.interp(times, JD_, Z_))
+
+
+def _xyz_from_file(obj='Sedna'):
+    '''
+    Read JD, X, Y and Z from file for a given object and obs_code.
+    input:
+    obj      - string - object name
+    '''
+    filename = obj + '_vector.txt'
+    JD_, X_, Y_, Z_ = np.genfromtxt(os.path.join(DATA_DIR, filename),
+                                    delimiter=(17, 66, 23, 3, 23, 3, 23),
+                                    usecols=(0, 2, 4, 6), unpack=True)
+    return JD_, X_, Y_, Z_
 
 
 # Won't need these calls if use pytest/similar
