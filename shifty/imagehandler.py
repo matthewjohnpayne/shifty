@@ -44,15 +44,17 @@ class ImageReader(Downloader):
 
         methods:
         --------
-        _load_image()
+        loadImageAndHeader()
+        _find_key_value()
 
         main public method:
         -------------------
+        loadImageAndHeader()
 
 
         '''
 
-    def __init__(self,):
+    def __init__(self, **kwargs):
         # - Allow ourselves to use Downloader methods
         Downloader.__init__(self,)
         # - Local directory for saving data
@@ -66,26 +68,123 @@ class ImageReader(Downloader):
     # The methods below are for the loading of *general* fits-format data files
     # -------------------------------------------------------------------------
 
-    def _load_image(self, fits_filepath):
+    def loadImageAndHeader(self, inputFile, extno=None, verbose=False, **kwargs):
         '''
-            Load a single image
-            - Currently a wrapper around astropy.fits.open
-            - With the potential for added functionality (to be added later)
+        Reads in a fits file (or a given extension of one).
+        Returns the image data, the header, and a few useful keyword values.
 
-            Input:
-            ------
-            fits_filepath
-             - valid filepath to single, valid fits-file
+        input:
+        ------
+        fits_filepath  - str      - valid filepath to single, valid fits-file
+        extno          - int OR None  - Extension number that has the image data (if multi-extension)
+        verbose        - bool         - Print extra stuff if True
+        EXPTIME        - str OR float - Exposure time in seconds (keyword or value)
+        MAGZERO        - str OR float - Zeropoint magnitude (keyword or value)
+        MJD_START      - str OR float - MJD at start of exposure (keyword or value)
+        GAIN           - str OR float - Gain value (keyword or value)
+        FILTER         - str          - Filter name (keyword)
+        NAXIS1         - str OR int   - Number of pixels along axis 1
+        NAXIS2         - str OR int   - Number of pixels along axis 2
+        INSTRUMENT     - str          - Instrument name (keyword)
+        
+        A float value can be defined for most keywords, rather than a keyword name;
+        this will use that walue rather than searching for the keyword in the headers.  
+        INSTRUMENT and FILTER obviously can't be floats,
+        so use a leading '-' to specify a value rather than a keyword name to use. 
 
-            Returns:
-            --------
-            lastropy.io.fits.hdu.hdulist.HDUList object
-            - [[ currently defaults to "None" if filepath invalid]]
+        output:
+        -------
+        self.header_keywords - dictionary - A bunch of header keyword names. 
+                                          - Not sure these are needed after use here.
+        self.EXPTIME         - float      - Exposure time in seconds
+        self.MAGZERO         - float      - Zeropoint magnitude
+        self.MJD_START       - float      - MJD at start of exposure
+        self.MJD_MID         - float      - MJD at centre of exposure
+        self.GAIN            - float      - Gain value
+        self.FILTER          - str        - Filter name
+        self.NAXIS1          - int        - Number of pixels along axis 1
+        self.NAXIS2          - int        - Number of pixels along axis 2
+        '''
+        # Initialization of default standard Fits header keywords
+        # - These may be overwritten by kwargs
+        self.header_keywords = {
+                                'EXPTIME': 'EXPTIME',      # Exposure time in seconds
+                                'MAGZERO': 'MAGZERO',      # Zeropoint magnitude
+                                'MJD_START': 'MJD-OBS',    # MJD at start of exposure
+                                'GAIN': 'GAIN',            # Gain value
+                                'FILTER': 'FILTER',        # Filter name
+                                'NAXIS1': 'NAXIS1',        # Number of pixels along axis 1
+                                'NAXIS2': 'NAXIS2',        # Number of pixels along axis 2
+                                'INSTRUMENT': 'INSTRUME',  # Instrument name
+                                }
+        # This is not a comprehensive list, just the ones that I expect we'll need,
+        # particularly those that I know have different names from different telescopes. 
 
-            '''
-        # Here I am returning the HDUlist object
-        # ** IT NEEDS TO BE CLOSED LATER ON !! **
-        return fits.open(fits_filepath) if os.path.isfile(fits_filepath) and '.fits' in fits_filepath else None
+        # Do a loop over the kwargs and see if any header keywords need updating
+        # (becasue they were supplied)
+        for key, value in kwargs.items():
+            if key in self.header_keywords:
+                self.header_keywords[key] = value
+
+        # Read the file:
+        with pyf.open(inputFile) as han:
+          if extno is None:    # Do this if it's a single extension file (single chips)
+            print('Warning: Treating this as a single extension file.')
+            self.data = han.data
+            self.header = han.header
+            self.header0 = self.header   # For single extension, header and header0 are the same.
+          else:                # Do this for multi-extension files (mosaic cameras)
+            self.data = han[extno].data
+            self.header = han[extno].header  # Header for the particular extension
+            self.header0 = han[0].header  # Extension 0 usually holds an general header for mosaic
+
+        # Read the WCS
+        self.WCS = wcs.WCS(self.header)
+
+        # Use the defined keywords to save the values into self.
+        # Search both headers if neccessary (using keyValue)
+        for key, use in self.header_keywords:
+            if key not in ['INSTRUMENT', 'FILTER', 'NAXIS1', 'NAXIS2']:
+                # Most keywords can just have a float value defined instead of keyword name
+                setattr(self, key, float(self._find_key_value(use)) if type(use) != float else use)
+            elif key in ['NAXIS1', 'NAXIS2']:
+                # Some keywords can have an integer value defined instead of keyword name
+                setattr(self, key, int(self._find_key_value(use)) if type(use) != int else use)
+            elif key == 'INSTRUMENT':
+                # INSTRUMENT and FILTER obviously can't be floats,
+                # so use a leading '-' to specify a value rather than a keyword name to use. 
+                self.INSTRUMENT = self._find_key_value(use)) if use[0] != '-' else use[1:]
+            elif key == 'FILTER':
+                # Filter only uses the first character of the supplied, not all the junk
+                self.FILTER = self._find_key_value(use))[0] if use[0] != '-' else use[1]
+        
+        # Also define the middle of the exposure:
+        self.MJD_MID = self.MJD_START + self.EXPTIME / 172800.0
+
+        print('{}\n'.format((self.EXPTIME, self.MAGZERO, self.MJD_START, self.MJD_MID,
+                             self.GAIN, self.FILTER, self.NAXIS1, self.NAXIS2, 
+                             self.INSTRUMENT)) if verbose else '', end='')
+
+    def _find_key_value(self, key):
+        """
+        First checks extension header for a keyword; if fails, checks main header.
+        This is neccessary because, annoyingly, some telescopes put things like the EXPTIME 
+        in the main header, while others put it in the header for each extension and NOT the main one.
+        
+        input:
+        ------
+        key - str - keyword to look for
+
+        output:
+        -------
+        value of keyword found in headers
+        """
+        try:
+          value =self.header[key]
+        except KeyError:
+          value = self.header0[key]
+        return value
+
 
     def generate_cleaned_data(self, **kwargs):
         '''
@@ -134,124 +233,11 @@ class ImageReader(Downloader):
         return stack_fits_filepath
 
 
-
-    def get_prfs(self,):
-        '''
-            ...
-        '''
-        # Defined in downloader ...
-        # - N.B.: if the prfs already exist, *get_prf()* does no download work ...
-        # ... but instead returns list of available filepaths
-        prf_filepaths = self.download_prf()
-
-        # Use standard method to open filepaths and return list of HDUs
-        #return self._load_images(fits_filepaths = prf_filepaths)
-
-
-
-    # -------------------------------------------------------------------------
-    # The method(s) below are for the deciding which TESS fits-format data file
-    # -------------------------------------------------------------------------
-
-    def _parse_filespec(self,  **kwargs):
-        '''
-            parsing function to allow passing of a variety of arguments to ...
-            ... the get_image_data_set() function
-
-            Thus far it knows how to interpret
-            (i) a list of fits-filepaths
-            (ii) a request for 'development' fits-files
-            (iii) a request for a specific sector/camera/chip
-
-            '''
-
-        try:
-
-            # if explict filepaths defined, use this, and pass on
-            if 'fits_filepaths' in kwargs:
-                fits_filepaths = [ ffp for ffp in np.atleast_1d(kwargs['fits_filepaths']) if os.path.isfile(ffp) and '.fits' in ffp ]
-
-            # If 'development' is specified, then get limited test/development data-set
-            elif  'development' in  kwargs and kwargs['development']:
-                fits_filepaths = self._ensure_test_data_available_locally()
-
-            # If the sector/camera/chip specified, then get the required filepaths
-            elif    np.all( [_ in kwargs for _ in ['sectorNumber', 'cameraNumber', 'chipNumber']]) \
-                and isinstance(kwargs['sectorNumber'], int) \
-                    and isinstance(kwargs['cameraNumber'], int) \
-                        and isinstance(kwargs['chipNumber'], int):
-                directory_path = os.path.join( self.tess_dir,
-                                              str(kwargs['sectorNumber']),
-                                              str(kwargs['cameraNumber']),
-                                              str(kwargs['chipNumber']))
-                fits_filepaths = glob.glob( os.path.join(directory_path, '*.fits'))
-            else:
-                pass
-
-        except Exception as error:
-            print('Could not interpret the supplied argument to get_image_data_set() : see _parse_filespec()')
-            print('*** NO FILES WILL BE OPENED *** ')
-            print(error)
-            fits_filepaths = []
-
-        return fits_filepaths
-
-
-    def _parse_patchspec(self, **kwargs):
-        '''
-            parsing function to allow passing of a variety of means to ...
-            ... specify the sub-region (patch) of a chip to work with
-
-            Thus far it knows how to interpret
-            (i) pythonic, 0-based, array specification
-            (ii) pixel, 1-based, specification
-        '''
-        x0,x1,y0,y1 = 0,-1,0,-1
-        try:
-            if 'patch' in kwargs and kwargs['patch']:
-
-                # If python-like specified, then array-elements numbered from 0
-                if  'python' in kwargs and kwargs['python'] == True and 'xlim' in kwargs and 'ylim' in kwargs:
-                    x0,x1,y0,y1 = kwargs['xlim'][0], kwargs['xlim'][1], kwargs['ylim'][0], kwargs['ylim'][1]
-
-                # If fits-pixel-like specified, then need to offset
-                elif 'pixel' in kwargs and kwargs['pixel'] == True and 'xlim' in kwargs and 'ylim' in kwargs:
-                    x0,x1,y0,y1 = kwargs['xlim'][0]-1, kwargs['xlim'][1]-1, kwargs['ylim'][0]-1, kwargs['ylim'][1]-1
-
-                else:
-                    pass
-
-        except Exception as error:
-            print('Could not parse patch-specification')
-            print(error)
-
-        return x0,x1,y0,y1
-
     # -------------------------------------------------------------------------
     # The method(s) below are convenience functions while developing ...
     # -------------------------------------------------------------------------
 
-    def _load_test_images(self,):
-        '''
-            Convenience function to load a small, pre-defined sample of test data
-            Does *NOT* create a stack file, just opens a bunch of individual fits-files
-        '''
-        return [ self._load_image(fp) for fp in self._ensure_test_data_available_locally() ]
 
-    def _generate_test_stack_file(self,):
-        '''
-            Convenience function to load a small, pre-defined sample of test data into a single stack-file
-            Does *NOT* do any cleaning
-        '''
-        return self.generate_cleaned_stack_file( development = True)
-
-    """
-    def _load_sector_camera_chip(self, sectorNumber, cameraNumber, chipNumber):
-    ''' convenience function to load data for single sector/camera/chip'''
-    return self._load_images( { 'sectorNumber' : sectorNumber,
-    'cameraNumber' : cameraNumber,
-    'chipNumber'   : chipNumber})
-    """
 
     # -------------------------------------------------------------------------
     # The method(s) below are for creating/handling an overall "stack" fits-fil
