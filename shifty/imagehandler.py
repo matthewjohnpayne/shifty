@@ -29,7 +29,7 @@ from shifty.downloader import Downloader
 # Various class definitions for *data import * in shifty
 # -----------------------------------------------------------------------------
 
-class ImageReader(Downloader):
+class OneImage(Downloader):
     '''
         (1)Loads fits-files
         (2)Reads WCS
@@ -59,17 +59,31 @@ class ImageReader(Downloader):
     # Why on earth should attributes not be defined outside init?
     # That seems dumb. Turning off this warning.
 
-    def __init__(self, filename=None, extno=None, verbose=False, **kwargs):
+    def __init__(self, filename=None, extno=0, verbose=False, **kwargs):
         # - Allow ourselves to use Downloader methods
         Downloader.__init__(self,)
         # - Local directory for saving data
         self.local_dir = self._fetch_data_directory()
-        self.header_keywords = {}
-        self.keyword_values = {}
+        # Initialization of default standard Fits header keywords
+        # - These may be overwritten by kwargs
+        self.header_keywords = {'EXPTIME': 'EXPTIME',      # Exposure time [s]
+                                'MAGZERO': 'MAGZERO',      # Zeropoint mag
+                                'MJD_START': 'MJD_STR',    # MJD at start
+                                'GAIN': 'GAINEFF',         # Gain value
+                                'FILTER': 'FILTER',        # Filter name
+                                'NAXIS1': 'NAXIS1',        # Pixels along axis1
+                                'NAXIS2': 'NAXIS2',        # Pixels along axis2
+                                'INSTRUMENT': 'INSTRUME',  # Instrument name
+                                }
+        # This is not a comprehensive list, just the ones that I expect
+        # we'll need, particularly those that I know have different names
+        # from different telescopes.
+        self.key_values = {}  # filled out by loadImageAndHeader
         self.filename = filename
         self.extno = extno
         if filename:
-            self.loadImageAndHeader(filename, extno, verbose=verbose, **kwargs)
+            self.readOneImageAndHeader(filename, extno,
+                                       verbose=verbose, **kwargs)
 
     # -------------------------------------------------------------------------
     # Public Methods
@@ -79,8 +93,8 @@ class ImageReader(Downloader):
     # The methods below are for the loading of *general* fits-format data files
     # -------------------------------------------------------------------------
 
-    def loadImageAndHeader(self, filename=None, extno=None, verbose=False,
-                           **kwargs):
+    def readOneImageAndHeader(self, filename=None, extno=0, verbose=False,
+                              **kwargs):
         '''
         Reads in a fits file (or a given extension of one).
         Returns the image data, the header, and a few useful keyword values.
@@ -88,8 +102,8 @@ class ImageReader(Downloader):
         input:
         ------
         filename       - str          - valid filepath to one valid fits-file
-        extno          - int OR None  - Extension number of image data
-                                      - (if multi-extension)
+        extno          - int          - Extension number of image data
+                                      - (0 if single-extension)
         verbose        - bool         - Print extra stuff if True
         EXPTIME        - str OR float - Exposure time in seconds
                                       - (keyword or value)
@@ -113,41 +127,37 @@ class ImageReader(Downloader):
         -------
         self.header_keywords - dictionary - A bunch of header keyword names.
                                           - Needed later at all???
-        self.EXPTIME         - float      - Exposure time in seconds
-        self.MAGZERO         - float      - Zeropoint magnitude
-        self.MJD_START       - float      - MJD at start of exposure
-        self.MJD_MID         - float      - MJD at centre of exposure
-        self.GAIN            - float      - Gain value
-        self.FILTER          - str        - Filter name
-        self.NAXIS1          - int        - Number of pixels along axis 1
-        self.NAXIS2          - int        - Number of pixels along axis 2
+        self.key_values      - dictionary - A bunch of important values
+
+        Content of self.key_values:
+        EXPTIME         - float      - Exposure time in seconds
+        MAGZERO         - float      - Zeropoint magnitude
+        MJD_START       - float      - MJD at start of exposure
+        MJD_MID         - float      - MJD at centre of exposure
+        GAIN            - float      - Gain value
+        FILTER          - str        - Filter name
+        NAXIS1          - int        - Number of pixels along axis 1
+        NAXIS2          - int        - Number of pixels along axis 2
         '''
-        # Initialization of default standard Fits header keywords
-        # - These may be overwritten by kwargs
-        self.header_keywords = {'EXPTIME': 'EXPTIME',      # Exposure time [s]
-                                'MAGZERO': 'MAGZERO',      # Zeropoint mag
-                                'MJD_START': 'MJD-OBS',    # MJD at start
-                                'GAIN': 'GAIN',            # Gain value
-                                'FILTER': 'FILTER',        # Filter name
-                                'NAXIS1': 'NAXIS1',        # Pixels along axis1
-                                'NAXIS2': 'NAXIS2',        # Pixels along axis2
-                                'INSTRUMENT': 'INSTRUME',  # Instrument name
-                                }
-        # This is not a comprehensive list, just the ones that I expect
-        # we'll need, particularly those that I know have different names
-        # from different telescopes.
+
+        # If filename is supplied, use supplied filename and extension.
+        # Otherwise, use those in self
+        if (filename is None) & (self.filename is None):
+            raise TypeError('filename must be supplied!')
+        elif filename is not None:
+            self.filename = filename
+            self.extno = extno
+        else:
+            filename = self.filename
+            extno = self.extno
 
         # Do a loop over the kwargs and see if any header keywords need updating
         # (becasue they were supplied)
-        for key, value_supplied in kwargs.items():
+        for key, non_default_name in kwargs.items():
             if key in self.header_keywords:
-                self.header_keywords[key] = value_supplied
+                self.header_keywords[key] = non_default_name
 
-        # Read the file:
-        if extno is None:
-            print('Warning: Treating this as a single extension file.')
-            extno = 0
-
+        # Read the file. Do inside a "with ... as ..." to auto close file after
         with fits.open(filename) as han:
             self.data = han[extno].data
             self.header = han[extno].header  # Header for the extension
@@ -162,32 +172,30 @@ class ImageReader(Downloader):
             if key not in ['INSTRUMENT', 'FILTER', 'NAXIS1', 'NAXIS2']:
                 # Most keywords can just have a float value defined
                 # instead of keyword name, that's what the if type is about.
-                setattr(self, key, (float(self._find_key_value(use))
-                                    if type(use) != float else use))
+                self.key_values[key] = (use if isinstance(use, float)
+                                        else float(self._find_key_value(use)))
             elif key in ['NAXIS1', 'NAXIS2']:
                 # Some keywords can have an integer value defined
                 # instead of keyword name
-                setattr(self, key, (int(self._find_key_value(use))
-                                    if type(use) != int else use))
+                self.key_values[key] = (use if isinstance(use, int)
+                                        else int(self._find_key_value(use)))
             elif key == 'INSTRUMENT':
                 # INSTRUMENT and FILTER obviously can't be floats,
                 # so use a leading '-' to specify a value to use
                 # instead of a keyword name.
-                self.INSTRUMENT = (self._find_key_value(use) if use[0] != '-'
-                                   else use[1:])
+                self.key_values[key] = (use[1:] if use[0] == '-'
+                                        else self._find_key_value(use))
             elif key == 'FILTER':
                 # Filter only wants the first character of the supplied,
                 # not all the junk (telescopes usually put numbers after)
-                self.FILTER = (self._find_key_value(use)[0] if use[0] != '-'
-                               else use[1])
+                self.key_values[key] = (use[1] if use[0] == '-'
+                                        else self._find_key_value(use)[0])
 
         # Also define the middle of the exposure:
-        self.MJD_MID = self.MJD_START + self.EXPTIME / 172800.0
+        self.key_values['MJD_MID'] = (self.key_values['MJD_START'] +
+                                      self.key_values['EXPTIME'] / 172800.0)
 
-        print('{}\n'.format((self.EXPTIME, self.MAGZERO, self.MJD_START,
-                             self.MJD_MID, self.GAIN, self.FILTER,
-                             self.NAXIS1, self.NAXIS2, self.INSTRUMENT))
-              if verbose else '', end='')
+        print('{}\n'.format((self.key_values)) if verbose else '', end='')
 
     def _find_key_value(self, key):
         """
