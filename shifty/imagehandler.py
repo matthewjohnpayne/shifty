@@ -15,8 +15,8 @@ import sys
 import numpy as np
 
 from astropy.io import fits
-from astropy.time import Time
 from astropy import wcs
+
 
 # -----------------------------------------------------------------------------
 # Any local imports
@@ -24,6 +24,7 @@ from astropy import wcs
 sys.path.append(os.path.dirname(os.path.dirname(
                 os.path.realpath(__file__))))
 from shifty.downloader import Downloader
+
 
 # -----------------------------------------------------------------------------
 # Various class definitions for *data import * in shifty
@@ -51,9 +52,9 @@ class OneImage(Downloader):
     # pylint: disable=too-many-instance-attributes
     # Why on earth should an object only have 7 attributes?
     # That seems dumb. Turning off this warning.
-    # pylint: disable=attribute-defined-outside-init
-    # Why on earth should attributes not be defined outside init?
-    # That seems dumb. Turning off this warning.
+    # pylint: disable=too-few-public-methods
+    # I get why an object should have at least two public methods in order to
+    # not be pointless, but it's an annoying warning during dev. Turning off.
 
     def __init__(self, filename=None, extno=0, verbose=False, **kwargs):
         '''
@@ -74,7 +75,7 @@ class OneImage(Downloader):
         NAXIS1         - str OR int   - Number of pixels along axis 1
         NAXIS2         - str OR int   - Number of pixels along axis 2
         INSTRUMENT     - str          - Instrument name (keyword)
- 
+
         A float/integer value can be defined for most keywords,
         rather than a keyword name; this will use that value
         rather than searching for the keyword in the headers.
@@ -88,11 +89,7 @@ class OneImage(Downloader):
         self.readOneImageAndHeader = readOneImageAndHeader
         # - Local directory for saving data
         self.local_dir = self._fetch_data_directory()
-        # Initialization of default standard Fits header keywords
-        # - These may be overwritten by kwargs
-        # This is not a comprehensive list, just the ones that I expect
-        # we'll need, particularly those that I know have different names
-        # from different telescopes.
+        # Initialize some attributes that will get filled later
         self.key_values = {}       # filled out by loadImageAndHeader
         self.header_keywords = {}  # filled out by loadImageAndHeader
         self.WCS = None            # filled out by loadImageAndHeader
@@ -118,12 +115,81 @@ class OneImage(Downloader):
 
 class ImageEnsemble(OneImage):
     '''
-    Bla
+    (1)Loads a list of fits-files
+    (2)Reads WCS
+    (3)Calculate pixel coordinates
+    (4)Interact with 'known'?
+
+    methods:
+    --------
+    loadImageAndHeader()
+    others?
+
+    main public method:
+    -------------------
+    loadImageAndHeader()
+
+
     '''
-    pass
+    # Turning off some stupid syntax-checker warnings:
+    # pylint: disable=too-few-public-methods
+    # I get why an object should have at least two public methods in order to
+    # not be pointless, but it's an annoying warning during dev. Turning off.
+
+    def __init__(self, filename=None, extno=0, verbose=False, **kwargs):
+        '''
+        inputs:
+        -------
+        filename       - list of str  - list of filepaths to valid fits-files
+        extno          - int OR       - Extension number to use for all images
+                         list of int  - list of extension to use for each image
+        verbose        - bool         - Print extra stuff if True
+        EXPTIME        - str OR float - Exposure time in seconds
+                                      - (keyword or value)
+        MAGZERO        - str OR float - Zeropoint magnitude
+                                      - (keyword or value)
+        MJD_START      - str OR float - MJD at start of exposure
+                                      - (keyword or value)
+        GAIN           - str OR float - Gain value (keyword or value)
+        FILTER         - str          - Filter name (keyword)
+        NAXIS1         - str OR int   - Number of pixels along axis 1
+        NAXIS2         - str OR int   - Number of pixels along axis 2
+        INSTRUMENT     - str          - Instrument name (keyword)
+
+        A float/integer value can be defined for most keywords,
+        rather than a keyword name; this will use that value
+        rather than searching for the keyword in the headers.
+        INSTRUMENT and FILTER obviously can't be floats/integers,
+        so use a leading '-' to specify a value
+        rather than a keyword name to use.
+        Not yet supported: list of a keyword values/names for each image, which
+        hopefully should only ever be useful if attempting to stack images
+        from different instruments; so low priority.
+        '''
+        # - Allow ourselves to use OneImage methods
+        # This sets up readOneImageAndHeader as a method (even though it
+        # doesn't have to be) and sets up the local_dir for saving data.
+        OneImage.__init__(self,)
+        # Set some values
+        self.filename = filename
+        self.extno = extno
+        # Do some awesome stuff!!!
+        datacube = []
+        wcscube = []
+        mjdcube = []
+        for i, filei in enumerate(filename):
+            exti = extno if isinstance(extno, int) else extno[i]
+            OneIm = OneImage(filei, exti, verbose, **kwargs)
+            datacube.append(OneIm.data)
+            wcscube.append(OneIm.WCS)
+            mjdcube.append(OneIm.key_values['MJD_MID'])
+        self.data = np.array(datacube)
+        self.WCS = np.array(wcscube)
+        self.MJD = np.array(mjdcube)
+
 
 # -------------------------------------------------------------------------
-# These functions really don't need to be methods, and therefore aren't. 
+# These functions really don't need to be methods, and therefore aren't.
 # No need to over-complicate things.
 # -------------------------------------------------------------------------
 
@@ -180,7 +246,7 @@ def readOneImageAndHeader(filename=None, extno=0, verbose=False,
     '''
 
     # Check whether a filename is supplied.
-    if (filename is None):
+    if filename is None:
         raise TypeError('filename must be supplied!')
 
     # Define default keyword names
@@ -205,7 +271,8 @@ def readOneImageAndHeader(filename=None, extno=0, verbose=False,
     with fits.open(filename) as han:
         data = han[extno].data
         header = han[extno].header  # Header for the extension
-        header0 = han[0].header  # Overall header for mosaic, ext0
+        # Overall header for whole mosaic, etx0:
+        header0 = han[0].header  # pylint: disable=E1101 # Pylint stupid errors
 
     # Read the WCS
     WCS = wcs.WCS(header)
@@ -241,6 +308,7 @@ def readOneImageAndHeader(filename=None, extno=0, verbose=False,
 
     print('{}\n'.format((key_values)) if verbose else '', end='')
     return data, header, header0, WCS, header_keywords, key_values
+
 
 def _find_key_value(header1, header2, key):
     """
