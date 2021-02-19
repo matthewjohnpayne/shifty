@@ -16,6 +16,8 @@ import numpy as np
 
 from astropy.io import fits
 from astropy import wcs
+from astropy.nddata import CCDData
+from ccdproc import Combiner, wcs_project
 
 
 # -----------------------------------------------------------------------------
@@ -132,6 +134,9 @@ class ImageEnsemble(OneImage):
 
     '''
     # Turning off some stupid syntax-checker warnings:
+    # pylint: disable=too-many-instance-attributes
+    # Why on earth should an object only have 7 attributes?
+    # That seems dumb. Turning off this warning.
     # pylint: disable=too-few-public-methods
     # I get why an object should have at least two public methods in order to
     # not be pointless, but it's an annoying warning during dev. Turning off.
@@ -173,6 +178,9 @@ class ImageEnsemble(OneImage):
         # Set some values
         self.filename = filename
         self.extno = extno
+        self.reprojected = False
+        self.shifted_data = None
+        self.stacked_data = None
         # Do some awesome stuff!!!
         datacube = []
         wcscube = []
@@ -186,6 +194,108 @@ class ImageEnsemble(OneImage):
         self.data = np.array(datacube)
         self.WCS = np.array(wcscube)
         self.MJD = np.array(mjdcube)
+
+    def reproject_data(self, target=0):
+        '''
+        Reprojects each layer of self.data to be aligned, using their WCS.
+        By default aligns everything else with the first image,
+        but this can be changed by setting target.
+
+        inputs:
+        -------
+        self.data
+        self.wcs
+        target    - int - Index of the target image to align relative to
+
+        outputs:
+        --------
+        self.data
+        self.reprojected = True
+        '''
+        reprojected = []
+        for i, dat in enumerate(self.data):
+            print("Reprojecting image {i}")
+            wcsi = self.WCS[i]
+            if i == target:
+                reprojected.append(CCDData(dat, wcs=wcsi, unit='adu'))
+            else:
+                reprojected.append(wcs_project(CCDData(dat, wcs=wcsi,
+                                                       unit='adu'),
+                                               self.WCS[target]))
+        self.data = np.array(reprojected)
+        self.reprojected = True
+
+    def integer_shift(self, shifts, padmean=False):
+        '''
+        Shift some data.
+
+        inputs:
+        -------
+        self.data
+        shifts    - list of int OR array of int - Shape (N_images, 2)
+
+        outputs:
+        --------
+        self.shifted_data
+        self.shifted_wcs?  - It would be nice to carry the wcs along
+        '''
+        # Make sure shifts is an array of integers:
+        shifts = np.array(shifts).round(0).astype(int)
+        # Make sure shifts are all positive (by subtracting smallest value)
+        shifts[:, 0] -= shifts[:, 0].min()
+        shifts[:, 1] -= shifts[:, 1].min()
+        # Find max and min shifts, to know how much to pad
+        ymax = shifts[:, 0].max()
+        xmax = shifts[:, 1].max()
+        shifted = []
+        for i, dat in enumerate(self.data):
+            print(f'Shifting image {i} by {shifts[i]}')
+            pad_value = np.mean(dat) if padmean else np.nan
+            pad_size = ((shifts[i, 0], ymax - shifts[i, 0]),
+                        (shifts[i, 1], xmax - shifts[i, 1]))
+            shifted.append(np.pad(dat, pad_size, constant_values=pad_value))
+        self.shifted_data = np.array(shifted)
+
+    def stack(self, shifted=False, median_combine=False,
+              save_to_filename=''):
+        '''
+        Stacks the data.
+
+        inputs:
+        -------
+        self.data
+        self.shifted_data
+        shifted           - boolean - Whether to use the shifted or plain data
+        median_combine    - boolean - Use median if True, mean otherwise
+        save_to_filename  - string or None - if string, saves to that file
+
+        outputs:
+        --------
+        self.stack
+
+        A median stack is often a little deeper than the mean stack,
+        but it does not preserve photon count in a photometric way.
+        So median stack is good for finding objects, mean best for photometry.
+        '''
+        print('Combining images', end='')
+        data = self.shifted_data if shifted else self.data
+        combiner = Combiner([CCDData(dati, unit='adu') for dati in data])
+        if median_combine:  # only if median is desired.
+            print(' using median stacking.')
+            self.stacked_data = combiner.median_combine()
+        else:  # Default
+            print(' using mean stacking')
+            self.stacked_data = combiner.average_combine()
+        if save_to_filename != '':
+            print(f'Saving file to {save_to_filename}')
+            self.save_stack(filename=save_to_filename)
+
+    def save_stack(self, filename='stack.fits'):
+        '''
+        Save a stack to a fits file.
+        '''
+        hdu = fits.PrimaryHDU(self.stacked_data)
+        hdu.writeto(filename, overwrite=True)
 
 
 # -------------------------------------------------------------------------
