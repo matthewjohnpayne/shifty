@@ -287,15 +287,16 @@ class ImageEnsemble(OneImage):
             print(' using mean stacking')
             self.stacked_data = combiner.average_combine()
         if save_to_filename != '':
-            print(f'Saving file to {save_to_filename}')
             self.save_stack(filename=save_to_filename)
 
     def save_stack(self, filename='stack.fits'):
         '''
         Save a stack to a fits file.
         '''
+        print(f'Saving stack to file {filename}')
         hdu = fits.PrimaryHDU(self.stacked_data)
         hdu.writeto(filename, overwrite=True)
+        print('Done!')
 
 
 # -------------------------------------------------------------------------
