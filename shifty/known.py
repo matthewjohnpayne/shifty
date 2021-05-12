@@ -115,7 +115,7 @@ class Known(Downloader):  # MA: Why is Downloader a base class here???
         obs_code    - string
                     - Note that Horizons uses some weird ones sometimes,
                       like "500@-95" for Tess.
-        times       - array
+        times       - array of times (JD)
         object_type - string
                     - Usually the default "smallbody" is fine, 
                       but for some objects, like natsats, it's neccessary.

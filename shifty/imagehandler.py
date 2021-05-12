@@ -28,6 +28,7 @@ from ccdproc import wcs_project  # , Combiner
 sys.path.append(os.path.dirname(os.path.dirname(
                 os.path.realpath(__file__))))
 from shifty.downloader import Downloader
+from shifty.known import Known
 
 
 # -----------------------------------------------------------------------------
@@ -372,6 +373,37 @@ class DataHandler():
         # Turn the shifted arrays into a 3D array and stick into self.
         self.shifted_data.data = np.array(shifted)
 
+    def shift_stack_by_name(self, object_name, obs_code,
+                            object_type='smallbody',
+                            padmean=False, **stack_args):
+        '''
+        Takes a known object (by name), and shifts the images according to the
+        JPL Horizons ephemeris of the object.
+
+        input:
+        ------
+        self.image_data
+        object_name    - string - Name of object to be looked up in Horizons
+        obs_code       - string - Observatory code
+        padmean        - bool   - Whether to pad with the mean (True) or
+                                  np.NaN (False)
+
+        'obs_code' must be a Horizons obs code (eg. '500@-95' for Tess).
+        Other optional keywords that selt.stack takes (such as 'which_WCS',
+        'padmean', 'median_combine' and 'save_to_filename') are also accepted
+        and passed along.
+
+        output:
+        -------
+        self.shifted_data - data array, updated WCS and header
+        '''
+        shifts = self._calculate_shifts_from_known(object_name=object_name,
+                                                   obs_code=obs_code,
+                                                   object_type=object_type)
+        self.integer_shift(shifts, padmean=padmean)
+        print(shifts)
+        self.stack(shifted=True, **stack_args)
+
     def stack(self, shifted=False, median_combine=False,
               save_to_filename='', which_WCS='middle'):
         '''
@@ -428,6 +460,60 @@ class DataHandler():
     def save_shifted(self, filename='shift'):
         '''Save the shifted images to fits files.'''
         save_fits(self.shifted_data, filename)
+
+    def _calculate_shifts_from_known(self, **KnownArgs):
+        '''
+        Takes a known object and calculates its RA and Dec at the times
+        in the FITs headers, converts to pixels and calculates the shift.
+
+        input:
+        ------
+        Must have:
+        obs_code    - string - Observatory code
+
+        At least one of:
+        object_name - string - Name of object to be looked up in Horizons
+        orbit       - object - An orbit (not yet implemented)
+
+        Either 'object_name' or 'orbit' must be supplied (if both are given,
+        'orbit' is ignored). If 'object_name' is given, 'obs_code' must be a
+        Horizons observatory code (eg. '500@-95' for Tess). If 'orbit' is given,
+        'obs_code' must be ??? (not implemented yet, but probably MPC format).
+        Other optional keywords that known.Known takes (such as 'object_type')
+        are also accepted and passed along.
+
+        output:
+        -------
+        shifts - Nx2 array - The calculated pixel shifts
+        '''
+        times = np.array([dh['SHIFTY_MJD_MID'] + 2400000.5 for dh
+                          in self.image_data.header])
+        if not (('object_name' in KnownArgs) or ('orbit' in KnownArgs)):
+            raise TypeError('Keyword arguments "object_name" or "orbit" must '
+                            'be supplied.')
+
+        K_obj = Known(times=times, **KnownArgs)
+        shifts = np.zeros([len(times), 2])
+        try:  # try using all transformation parameters
+            pix0 = self.image_data.WCS[0].all_world2pix(K_obj.RA[0],
+                                                        K_obj.Dec[0], 0,
+                                                        ra_dec_order=True)
+            for i in np.arange(len(times)):
+                pixi = self.image_data.WCS[i].all_world2pix(K_obj.RA[i],
+                                                            K_obj.Dec[i], 0,
+                                                            ra_dec_order=True)
+                shifts[i, :] = np.flip(pix0) - np.flip(pixi)
+        except wcs.NoConvergence:  # if fail, do basic WCS transform
+            pix0 = self.image_data.WCS[0].wcs_world2pix(K_obj.RA[0],
+                                                        K_obj.Dec[0], 0,
+                                                        ra_dec_order=True)
+            for i in np.arange(len(times)):
+                pixi = self.image_data.WCS[i].wcs_world2pix(K_obj.RA[i],
+                                                            K_obj.Dec[i], 0,
+                                                            ra_dec_order=True)
+                shifts[i, :] = np.flip(pix0) - np.flip(pixi)
+
+        return shifts
 
 
 # -------------------------------------------------------------------------
