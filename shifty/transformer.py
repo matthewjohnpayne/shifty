@@ -133,6 +133,8 @@ class Transformer():
         denominator = 1 + abg[5] * dtime + abg[2] * grav[2] - abg[2] * z_E
         theta_x = num_x / denominator
         theta_y = num_y / denominator
+        #theta_x = abg[0]+abg[3] * dtime - abg[2]*x_E
+        #theta_y = abg[1]+abg[4] * dtime - abg[2]*y_E
         return np.array([theta_x, theta_y]).T
 
     def get_light_travel_times(self):
@@ -143,7 +145,10 @@ class Transformer():
         # Light travel times (in days?)
         LTTs = np.array([vec[2] / speed_of_light_auPday
                          for vec in self._xyz_observer()])
-
+        # Hang on, this doesn't seem right. 
+        # This is just the light travel time from the observer's
+        # location at the reference time to the observer's current location.
+        
         return LTTs
 
     def _grav_pert(self, abg):
@@ -161,7 +166,6 @@ class Transformer():
         '''
         X_E(t) vector.
         Calculates the locations of the observer relative to the reference.
-        For now, just make the observer not move. Only really works if t<2 days.
         '''
         helio_obs_xyz = self._get_observatory_position()
         helio_obs_xyz0 = self._get_observatory_position(reference=True)
@@ -173,6 +177,8 @@ class Transformer():
     def _get_observatory_position(self, reference=False):
         '''
         Query horizons for the observatory position at a sequence of times.
+        Uses MPC tools rather than horizons if self.method='MPC'
+        or if horizons fails (no internet?)
         input:
         reference   - boolean - False = use self.times
                               - True  = use self.time0 reference time
@@ -185,12 +191,12 @@ class Transformer():
                     'verbose': self.verbose}
         # Use Horizons if explicitly requested:
         if (len(self.obs_code) != 3) | (self.method == 'JPL'):
-            return get_heliocentic_ecliptic_XYZ_horizons(**args)
+            return get_heliocentic_equatorial_XYZ_from_JPL(**args)
         # Otherwise, try using MPC tools first.
         try:
-            return get_heliocentric_ecliptic_xyz_from_MPC(**args)
+            return get_heliocentric_equatorial_XYZ_from_MPC(**args)
         except:  # If MPC tools fail, use Horizons.
-            return get_heliocentic_ecliptic_XYZ_horizons(**args)
+            return get_heliocentic_equatorial_XYZ_horizons(**args)
 
     def _do_transformation(self, observatory_posn):
         '''
@@ -238,10 +244,10 @@ class Transformer():
 # -------------------------------------------------------------------------
 
 
-def get_heliocentic_ecliptic_XYZ_horizons(times, obs_code='500',
-                                          verbose=False):
+def get_heliocentic_equatorial_XYZ_from_JPL(times, obs_code='500',
+                                            verbose=False):
     '''
-    Query horizons for the ecliptic heliocentric
+    Query horizons for the EQUATORIAL heliocentric
     observatory position at a sequence of times.
 
     input:
@@ -256,15 +262,15 @@ def get_heliocentic_ecliptic_XYZ_horizons(times, obs_code='500',
     times_tdb = times_AP.tdb.value
     horizons_query = Horizons(id='10', location=obs_code,
                               epochs=times_tdb, id_type='id')
-    horizons_vector = horizons_query.vectors(refplane='ecliptic')
-    helio_OBS_jpl = 0 - np.array([horizons_vector['x'], horizons_vector['y'],
+    horizons_vector = horizons_query.vectors(refplane='earth')
+    helio_OBS_equ = 0 - np.array([horizons_vector['x'], horizons_vector['y'],
                                   horizons_vector['z']]).T
     if verbose:
         print('No verbosity implemented yet, sorry')
-    return helio_OBS_jpl
+    return helio_OBS_equ
 
 
-def get_heliocentric_equatorial_xyz_from_MPC(times, obs_code='500',
+def get_heliocentric_equatorial_XYZ_from_MPC(times, obs_code='500',
                                              verbose=False):
     '''
     Get the heliocentric EQUATORIAL vector coordinates of the
@@ -288,7 +294,7 @@ def get_heliocentric_equatorial_xyz_from_MPC(times, obs_code='500',
     return np.array(helio_OBS_equ)
 
 
-def get_heliocentric_ecliptic_xyz_from_MPC(times, obs_code='500',
+def get_heliocentric_ecliptic_XYZ_from_MPC(times, obs_code='500',
                                            verbose=False):
     '''
     Get the heliocentric ECLIPTIC vector coordinates of the
@@ -298,7 +304,7 @@ def get_heliocentric_ecliptic_xyz_from_MPC(times, obs_code='500',
     obs_code    - string
     times       - JD time (UTC)
     '''
-    helio_OBS_equ = get_heliocentric_equatorial_xyz_from_MPC(times, obs_code,
+    helio_OBS_equ = get_heliocentric_equatorial_XYZ_from_MPC(times, obs_code,
                                                              verbose)
     helio_OBS_ecl = []
     for hequ in helio_OBS_equ:
@@ -317,11 +323,24 @@ def equatorial_to_ecliptic(input_xyz, ecliptic_to_equatorial=False):
         output_xyz - np.array length 3
     '''
     # MPC_library imported here, as it is an optional dependancy
-    from mpcpp import MPC_library as mpc
     direction = -1 if ecliptic_to_equatorial else +1
-    rotation_matrix = mpc.rotate_matrix(-mpc.Constants.ecl * direction)
+    rotation_matrix = get_rotation_matrix(direction)
     output_xyz = np.dot(rotation_matrix, input_xyz.reshape(-1, 1)).flatten()
     return output_xyz
+
+
+def get_rotation_matrix(direction):
+    '''
+    This function is inspired by the "rotate_matrix" function in the
+    MPC_library, but is placed here to reduce non-trivial dependencies.
+    '''
+    obliquityJ2000 = (84381.448*(1./3600)*np.pi/180.) # Obliquity of ecliptic at J2000
+    cose = np.cos(obliquityJ2000)
+    sine = np.sin(-obliquityJ2000)
+    rotation_matrix = np.array([[1.0,   0.0,  0.0],
+                                [0.0,  cose, sine],
+                                [0.0, -sine, cose]])
+    return rotation_matrix
 
 
 def eq2ecl(rad, decd, reverse=False):

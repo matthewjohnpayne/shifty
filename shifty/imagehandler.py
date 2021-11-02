@@ -317,6 +317,7 @@ class DataHandler():
         # Set some values
         self.filename = filename
         self.extno = extno
+        self.verbose = verbose
         if filename is not None:
             self.image_data = DataEnsemble(filename, extno, verbose, **kwargs)
         else:
@@ -353,7 +354,8 @@ class DataHandler():
         # Do the shifting in a loop over each image
         shifted = []
         for i, dat in enumerate(self.image_data.data):
-            print(f'Shifting image {i} by {shifts[i]}')
+            if self.verbose:
+                print(f'Shifting image {i} by {shifts[i]}')
             pad_value = np.mean(dat) if padmean else np.nan  # Mean or NaN
             pad_size = ((shifts[i, 0], ymax - shifts[i, 0]),  # Size of pad
                         (shifts[i, 1], xmax - shifts[i, 1]))  # on 4 sides
@@ -401,7 +403,8 @@ class DataHandler():
                                                    obs_code=obs_code,
                                                    object_type=object_type)
         self.integer_shift(shifts, padmean=padmean)
-        print(shifts)
+        if self.verbose:
+            print(shifts)
         self.stack(shifted=True, **stack_args)
 
     def stack(self, shifted=False, median_combine=False,
