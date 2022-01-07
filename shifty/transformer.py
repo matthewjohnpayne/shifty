@@ -191,12 +191,12 @@ class Transformer():
                     'verbose': self.verbose}
         # Use Horizons if explicitly requested:
         if (len(self.obs_code) != 3) | (self.method == 'JPL'):
-            return get_heliocentic_equatorial_XYZ_from_JPL(**args)
+            return get_heliocentric_equatorial_XYZ_from_JPL(**args)
         # Otherwise, try using MPC tools first.
         try:
             return get_heliocentric_equatorial_XYZ_from_MPC(**args)
         except:  # If MPC tools fail, use Horizons.
-            return get_heliocentic_equatorial_XYZ_horizons(**args)
+            return get_heliocentric_equatorial_XYZ_horizons(**args)
 
     def _do_transformation(self, observatory_posn):
         '''
@@ -244,7 +244,7 @@ class Transformer():
 # -------------------------------------------------------------------------
 
 
-def get_heliocentic_equatorial_XYZ_from_JPL(times, obs_code='500',
+def get_heliocentric_equatorial_XYZ_from_JPL(times, obs_code='500',
                                             verbose=False):
     '''
     Query horizons for the EQUATORIAL heliocentric
