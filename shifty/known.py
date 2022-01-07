@@ -123,7 +123,7 @@ class Known(Downloader):  # MA: Why is Downloader a base class here???
         '''
         horizons_query = Horizons(id=object_name, location=obs_code,
                                   epochs=times, id_type=object_type)
-        horizons_ephem = horizons_query.ephemerides(extra_precision=True)
+        horizons_ephem = horizons_query.ephemerides(extra_precision=False)
         self.RA, self.Dec = np.array([horizons_ephem['RA'],
                                       horizons_ephem['DEC']])
 
